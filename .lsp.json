@@ -1,0 +1,17 @@
+{
+  "magma": {
+    "command": "uv",
+    "args": ["run", "--project", "${CLAUDE_PLUGIN_ROOT}", "magma-lsp", "--stdio"],
+    "extensionToLanguage": {
+      ".magma": "magma",
+      ".m": "magma"
+    },
+    "initializationOptions": {
+      "magmaPath": "/opt/magma/magma",
+      "magmaDiagnostics": true,
+      "lints": true
+    },
+    "restartOnCrash": true,
+    "maxRestarts": 5
+  }
+}

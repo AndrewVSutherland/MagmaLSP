@@ -1,0 +1,51 @@
+[project]
+name = "magma-lsp"
+version = "0.0.1"
+description = "Language server and Claude Code plugin for the Magma computer algebra system"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "MagmaLSP contributors" }]
+keywords = ["magma", "lsp", "language-server", "computer-algebra", "mathematics"]
+dependencies = [
+    "pygls>=1.3",
+    "lsprotocol>=2023.0.1",
+    "tree-sitter>=0.23",
+    "tree-sitter-magma",
+]
+
+[project.scripts]
+magma-lsp = "magma_lsp.server:main"
+magma-lsp-build-db = "magma_lsp.db.build:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "ruff>=0.6",
+]
+
+[tool.uv.sources]
+# tree-sitter-magma is not on PyPI; build the Python binding from the grammar repo.
+# Generated from Magma's own yacc grammar (MIT). Pinned to a known-good revision.
+tree-sitter-magma = { git = "https://github.com/edgarcosta/tree-sitter-magma" }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/magma_lsp"]
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "magma: tests that require a real Magma install (skipped if `magma` is not on PATH)",
+]

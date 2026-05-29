@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+build/
+dist/
+
+# uv
+# (uv.lock IS committed)
+
+# Test / tooling
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Built signature DB artifacts (version-specific, regenerated per Magma install)
+*.magmadb.json
+*.magmadb.sqlite
+/data/db/
+
+# Editor / OS
+.DS_Store
+*.swp
