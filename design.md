@@ -48,9 +48,14 @@ Prioritize the two levers that make Claude write *correct* Magma:
 2. **A Magma-backed error signal.** A way to actually check generated code against Magma and surface
    its real errors, so the agent self-corrects within the same turn instead of handing the user
    broken code.
+3. **Static analysis Magma itself doesn't provide.** The interpreter only reports parse/run-time errors;
+   it never flags unused variables, use-before-assignment, undefined names, or shadowing. A lightweight
+   pyflakes-style linter — driven by the parser's scope/binding resolution (see §4, and `locals.scm` from
+   the tree-sitter grammar in §5) — catches a class of mistakes *before* code is even run, on every edit.
+   Cheap, instant, and a genuine value-add over a bare Magma session.
 
 Classic editor niceties (hover, go-to-definition) mostly serve a *human* typing; provide them, but
-they are secondary to the two levers above. Don't over-invest in them early.
+they are secondary to the levers above. Don't over-invest in them early.
 
 ## 4. Architecture
 
@@ -58,8 +63,12 @@ A shared core with thin front-ends:
 
 - **Core engine**
   - *Signature DB* — built once per Magma version, queried at runtime.
-  - *Parser* — tokenizes/parses Magma source for syntax diagnostics and structural features
-    (document symbols, navigation).
+  - *Parser* — for parsing **user source** in the live server (syntax diagnostics, document symbols,
+    navigation, the §6 lints), use the existing **`tree-sitter-magma`** grammar (MIT; generated from Magma's
+    own yacc grammar; ships Python bindings) rather than hand-rolling a parser — see §5. It gives an
+    error-recovering AST plus ready-made `highlights`/`locals`/`indents`/`folds` queries; `locals.scm`
+    (scopes + definitions + references) is exactly the machinery for the static lints. A *separate*, simpler
+    extractor still scans the package `.m` corpus to build the Signature DB (intrinsic headers + doc strings).
   - *Validation backend* — shells out to a running Magma to check code (see §6).
 - **LSP front-end** (proposed: `pygls`) — consumes the core; this is what the Claude Code plugin
   attaches to.
@@ -97,8 +106,22 @@ implementations.
    indices and a global INDEX. Use for richer hover docs and examples; secondary to (1)–(2) for
    signatures. Available locally in the install `doc` directory and online.
 4. **PDF handbook.** Reference/fallback copy of the same content.
+5. **Existing open-source Magma tooling (reuse, don't reinvent).** Two MIT-licensed, actively-maintained
+   projects already solve parsing/highlighting/formatting:
+   - **`tree-sitter-magma`** (https://github.com/edgarcosta/tree-sitter-magma) — a tree-sitter grammar
+     *generated from Magma's own yacc grammar*, with **Python bindings** (`tree_sitter_magma`) and
+     `queries/{highlights,locals,indents,folds}.scm`. This is the parser foundation for the live server
+     (§4): error-recovering AST, document symbols, semantic tokens, and — via `locals.scm` — the scope/binding
+     resolution that powers the unused/undefined-variable lints (§3, §6). Moderately mature; expect coverage
+     gaps, so pin/vendor a known-good commit, keep a regression corpus, and consider upstreaming fixes.
+   - **`lava`** (https://github.com/havarddj/lava) — a Rust CLI built on tree-sitter-magma + topiary providing
+     `format`, `highlight`, and a `test` runner. We get **reformatting for free**: use lava directly rather
+     than reimplementing a formatter (and note Claude Code's LSP doesn't request `formatting` anyway, so it's
+     a CLI/pre-commit nicety, not core). Its `tests/topiary-tests/{input,expected}/*.m` doubles as a ready-made
+     parser regression corpus (~30 syntactic constructs).
 
-IP: cleared (see §1) — signatures and docs may be bundled, with attribution.
+IP: cleared (see §1) — signatures and docs may be bundled, with attribution. The two tools above are MIT, so
+bundling/depending on them is unproblematic (preserve their license/attribution).
 
 ## 6. Diagnostics design
 
@@ -106,14 +129,19 @@ Hybrid, fast-to-slow:
 
 - **Static (no Magma process).** Syntax errors from the parser; unknown-intrinsic, arity, and
   argument-type checks against the signature DB. Cheap, instant, runs on every edit.
+- **Scope/lint pass (no Magma process).** Pyflakes-style checks from the tree-sitter `locals.scm`
+  scope/binding resolution (lever 3, §3): unused variable/parameter, undefined / use-before-assignment
+  (cross-checked against the signature DB to avoid flagging intrinsics), and shadowing. Also static, so
+  it runs on every edit. *Magma gotcha:* `_` is the discard placeholder in multi-value assignment
+  (`a, _ := Foo();`) — never warn on `_`; honor `~ref` params and `where`/quantifier bindings.
 - **Dynamic (Magma in the loop).** Deeper validation by checking the code against a real Magma. This
   is the high-value error signal.
 
-**Open question that shapes this:** does Magma have a parse / syntax-check-only mode, or does
-checking require actually executing the code (with side effects and runtime cost)? Determine
-in-session. If execution is the only option, sandbox it — per-check process with time and memory
-limits, no persistent side effects — and treat it as opt-in / on-save rather than on every
-keystroke.
+**Resolved (was an open question):** Magma has no pure parse-only flag, but a **never-called function wrapper**
+parses + binds user code *without executing* it — catching syntax errors and undefined names cheaply; genuine
+type/value errors need a real execution pass. Sandbox every check: fresh per-check process (~104 ms cold
+start), external `timeout`, `SetMemoryLimit`, and `</dev/null` to avoid stdin hangs. See `CLAUDE.md` §3/§5 for
+the verified invocation recipe, error-block format, and exit-code semantics.
 
 ## 7. Staged build plan
 
@@ -124,11 +152,13 @@ start.
 0. **Scaffolding + end-to-end loop.** Repo skeleton, the trivial Claude Code plugin (`.lsp.json` +
    manifest), and a minimal server that attaches and emits one trivial diagnostic — purely to prove
    the Claude Code ↔ server channel works before building anything real.
-1. **Signature DB + read-only intelligence (Python prototype).** Parse package files; merge
-   `ListSignatures`; define the DB schema (handle multi-signature intrinsics and optional
-   parameters); build the DB. Stand up a `pygls` server providing completion, signature help, and
-   hover from the DB, plus syntax diagnostics from the parser. Validate against real package files
-   and real Magma snippets.
+1. **Signature DB + read-only intelligence (Python prototype).** Build a `.m`-corpus extractor for the DB
+   (intrinsic headers + doc strings, resolving `{"}` ditto docs) and merge `ListSignatures`; define the DB
+   schema (handle multi-signature intrinsics and optional parameters); build the DB. Wire **`tree-sitter-magma`**
+   (§5) in via its Python bindings for user-source parsing. Stand up a `pygls` server providing completion,
+   signature help, and hover from the DB, plus syntax diagnostics + document symbols from the tree-sitter AST,
+   plus the **scope/lint pass** (§3 lever 3, §6) from `locals.scm`. Validate against real package files, the
+   lava test corpus, and real Magma snippets.
 2. **Magma-backed validation.** Add the dynamic diagnostics backend from §6, sandboxed. Delivers the
    in-turn self-correction lever.
 3. **Hardening, performance, packaging.** Profile; port only hot paths to C if needed (much of the
@@ -147,20 +177,25 @@ start.
   ask questions answerable by inspecting it.
 - Keep a regression test corpus of Magma snippets with expected diagnostics; grow it as bugs surface.
 
-## 9. Open questions to resolve in-session
+## 9. Open questions
 
-- Exact `ListSignatures` invocation to enumerate all intrinsics, and its output format for parsing.
-- Package-tree / spec-file layout in the install; how packages are organized by area.
-- Whether Magma supports a parse / syntax-check-only mode (§6).
-- Precise handbook HTML structure for the intrinsic and INDEX pages (for doc extraction).
-- DB modeling of overloaded (multi-signature) intrinsics and optional parameters.
+**Resolved by the recon session** (all findings captured in `CLAUDE.md` — read it for specifics): exact
+`ListSignatures` enumeration recipe + output grammar; package-tree / spec layout by area; syntax-check-only
+approach (function-wrap trick); handbook HTML structure + name→doc lookup; the intrinsic declaration grammar
+incl. edge cases (`{"}` ditto, multi-line headers, operator names, `~ref`/`.`/`Any` args); current Claude Code
+`.lsp.json` / plugin-manifest / marketplace specifics.
+
+**Still open:**
+- DB modeling of overloaded (multi-signature) intrinsics and optional parameters (schema design).
 - Full-DB build time and server query latency (informs any later C work).
-- Current Claude Code plugin manifest / marketplace specifics (verify against live docs).
+- `tree-sitter-magma` coverage vs. real Magma (16 open issues upstream) — which constructs it mis-parses;
+  whether to vendor/pin a commit and/or upstream fixes.
+- `.m`/`.magma` extension association + languageId behavior inside a live Claude Code session.
 
 ## 10. Start here (first task for the Claude Code session)
 
-On the VM: inspect the Magma install layout (package tree, `doc` directory). Capture a small sample —
-the `ListSignatures` output for a couple of intrinsics (one package-level, one kernel-level) and one
-or two representative package files (arithmetic-geometry flavored is ideal). Confirm the `intrinsic`
-declaration grammar against those files. Then begin Phase 1: write the declaration parser and the DB
-schema, validating the parser against the sample files.
+**Recon is done** — the install layout, `ListSignatures` enumeration, intrinsic grammar, validation behavior,
+handbook structure, and the Claude Code plugin format have all been verified first-hand and written up in
+`CLAUDE.md` (read it first). Next: begin **Phase 0** (repo skeleton + trivial plugin + minimal server to prove
+the Claude Code ↔ server channel), then **Phase 1** — stand up `tree-sitter-magma` (§5) and the `.m`-corpus
+extractor, design the DB schema, and validate the parser against the package corpus + the lava test corpus.
