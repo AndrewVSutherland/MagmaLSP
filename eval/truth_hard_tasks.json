@@ -1,0 +1,102 @@
+{
+  "amicable_count": {
+    "prompt": "Print how many integers n with 2 <= n <= 2000 are amicable (the sum of the proper divisors of n equals some m != n whose proper-divisor sum is n).",
+    "domain": "integers",
+    "expected": "4"
+  },
+  "resultant": {
+    "prompt": "Print the resultant of the polynomials x^4 - 1 and x^3 + 2*x + 1 over Q.",
+    "domain": "polynomials",
+    "expected": "-16"
+  },
+  "factors_x15": {
+    "prompt": "Print the number of irreducible factors of x^15 - 1 over the rationals.",
+    "domain": "polynomials",
+    "expected": "4"
+  },
+  "mult_order": {
+    "prompt": "Print the multiplicative order of 2 modulo the prime 1000000007.",
+    "domain": "integers",
+    "expected": "500000003"
+  },
+  "bernoulli_digits": {
+    "prompt": "Print the number of decimal digits of the numerator of the Bernoulli number B_10000 (use the absolute value of the numerator).",
+    "domain": "integers",
+    "expected": "27691"
+  },
+  "splitting_degree": {
+    "prompt": "Print the degree over Q of the splitting field of x^3 - 2.",
+    "domain": "number fields",
+    "expected": "6"
+  },
+  "galois_order": {
+    "prompt": "Print the order of the Galois group of the polynomial x^5 - 2 over Q.",
+    "domain": "number fields",
+    "expected": "20"
+  },
+  "torsion_units": {
+    "prompt": "Print the number of roots of unity in the number field Q[x]/(x^4 + x^3 + x^2 + x + 1).",
+    "domain": "number fields",
+    "expected": "10"
+  },
+  "s4_normal": {
+    "prompt": "Print the number of normal subgroups of the symmetric group S_4 (including the trivial subgroup and the whole group).",
+    "domain": "groups",
+    "expected": "4"
+  },
+  "sylow2_s8": {
+    "prompt": "Print the order of a Sylow 2-subgroup of the symmetric group S_8.",
+    "domain": "groups",
+    "expected": "128"
+  },
+  "aut_d12": {
+    "prompt": "Print the order of the automorphism group of the dihedral group of order 12.",
+    "domain": "groups",
+    "expected": "12"
+  },
+  "matrix_order_ff": {
+    "prompt": "Print the multiplicative order of the matrix [[1,1],[0,1]] in GL(2, GF(5)).",
+    "domain": "groups",
+    "expected": "5"
+  },
+  "smith_largest": {
+    "prompt": "Print the largest elementary divisor (last diagonal entry of the Smith normal form) of the integer matrix [[2,4,4],[-6,6,12],[10,-4,-16]].",
+    "domain": "linear algebra",
+    "expected": "12"
+  },
+  "petersen_chromatic": {
+    "prompt": "Print the chromatic number of the Petersen graph.",
+    "domain": "graphs",
+    "expected": "3"
+  },
+  "petersen_auto": {
+    "prompt": "Print the order of the automorphism group of the Petersen graph.",
+    "domain": "graphs",
+    "expected": "120"
+  },
+  "e8_aut_order": {
+    "prompt": "Print the order of the automorphism group of the E8 root lattice.",
+    "domain": "lattices",
+    "expected": "696729600"
+  },
+  "e8_kissing": {
+    "prompt": "Print the kissing number (number of minimal vectors) of the E8 root lattice.",
+    "domain": "lattices",
+    "expected": "240"
+  },
+  "hamming_mindist": {
+    "prompt": "Print the minimum distance of the binary [7,4] Hamming code.",
+    "domain": "codes",
+    "expected": "3"
+  },
+  "golay_mindist": {
+    "prompt": "Print the minimum distance of the binary [23,12,7] Golay code.",
+    "domain": "codes",
+    "expected": "7"
+  },
+  "variety_size": {
+    "prompt": "Print the number of solutions over the algebraic closure of Q of the system x + y + z = 0, x*y + y*z + z*x = 0, x*y*z = 1.",
+    "domain": "commutative algebra",
+    "expected": "6"
+  }
+}

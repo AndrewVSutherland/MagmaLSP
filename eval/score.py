@@ -9,7 +9,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import sys
 
 from magma_lsp.magma.diagnostics import parse_diagnostics
 from magma_lsp.magma.runner import run_source
@@ -48,14 +47,20 @@ def score_results(results: list[dict], truth: dict[str, dict]) -> list[dict]:
 
 
 def main() -> int:
+    import argparse
+
     here = os.path.dirname(__file__)
-    with open(os.path.join(here, "truth.json"), encoding="utf-8") as fh:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("generations", nargs="?", default=os.path.join(here, "generations.json"))
+    ap.add_argument("--truth", default=os.path.join(here, "truth.json"))
+    ap.add_argument("--out", default=os.path.join(here, "scored.json"))
+    args = ap.parse_args()
+    with open(args.truth, encoding="utf-8") as fh:
         truth = json.load(fh)
-    gen_path = sys.argv[1] if len(sys.argv) > 1 else os.path.join(here, "generations.json")
-    with open(gen_path, encoding="utf-8") as fh:
+    with open(args.generations, encoding="utf-8") as fh:
         results = json.load(fh)
     scored = score_results(results, truth)
-    out_path = os.path.join(here, "scored.json")
+    out_path = args.out
     with open(out_path, "w", encoding="utf-8") as fh:
         json.dump(scored, fh, indent=2, ensure_ascii=False)
     print(f"scored {len(scored)} -> {out_path}")
