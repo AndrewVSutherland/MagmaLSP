@@ -341,6 +341,29 @@ def document_symbol(
     return out
 
 
+@server.feature(t.WORKSPACE_SYMBOL)
+def workspace_symbol(
+    ls: MagmaLanguageServer, params: t.WorkspaceSymbolParams
+) -> list[t.WorkspaceSymbol]:
+    if ls.index is None:
+        return []
+    out: list[t.WorkspaceSymbol] = []
+    for name, loc in ls.index.search_symbols(params.query):
+        line0 = max(0, loc.line - 1)
+        col0 = max(0, loc.col - 1)
+        out.append(
+            t.WorkspaceSymbol(
+                name=name,
+                kind=t.SymbolKind.Function,
+                location=t.Location(
+                    uri=from_fs_path(loc.file),
+                    range=t.Range(t.Position(line0, col0), t.Position(line0, col0 + len(name))),
+                ),
+            )
+        )
+    return out
+
+
 def _to_document_symbol(s: Symbol) -> t.DocumentSymbol:
     rng = t.Range(t.Position(s.line, s.col), t.Position(s.end_line, s.end_col))
     name_rng = t.Range(t.Position(s.line, s.col), t.Position(s.line, s.col + len(s.name)))

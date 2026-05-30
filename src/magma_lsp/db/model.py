@@ -23,6 +23,12 @@ class Param:
     default: str | None = None  # optional-parameter default expression, verbatim
 
 
+def _render_param(p: Param) -> str:
+    if p.name and p.type:
+        return f"{p.name}::{p.type}"
+    return p.name or p.type or ""
+
+
 @dataclass(frozen=True)
 class SourceLocation:
     file: str
@@ -43,7 +49,7 @@ class Signature:
 
     def render(self) -> str:
         """Render the signature the way ``ListSignatures`` / the handbook would display it."""
-        inner = ", ".join(f"{a.name}::{a.type}" if a.type else a.name for a in self.args)
+        inner = ", ".join(_render_param(a) for a in self.args)
         if self.opt_params:
             opts = ", ".join(
                 f"{p.name} := {p.default}" if p.default is not None else p.name

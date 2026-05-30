@@ -13,8 +13,9 @@ Magma and the build environment.
 - **Signature intelligence** from a database built per Magma version (CLAUDE.md §4):
   - package `.m` files → arg names, optional parameters, doc strings, and source locations
     (parsed with [`tree-sitter-magma`](https://github.com/edgarcosta/tree-sitter-magma));
-  - `ListSignatures` in a running Magma → completeness, including kernel intrinsics.
-  - Powers **hover**, **completion**, **signature help**, and **go-to-definition**.
+  - `ListSignatures` in a running Magma → completeness, including kernel intrinsics;
+  - a `name;` probe to recover variadic intrinsics (`Sprintf`, `Explode`) that `ListSignatures` omits.
+  - Powers **hover**, **completion**, **signature help**, **go-to-definition**, and **workspace symbols**.
 - **Diagnostics** pushed to the editor after each edit:
   - **Magma-backed** syntax/binding check via a sandboxed, never-called-function wrap (CLAUDE.md §5);
   - **static lints Magma doesn't provide** — unused/dead local variables (CLAUDE.md §13);

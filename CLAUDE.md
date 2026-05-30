@@ -114,9 +114,24 @@ is reprinted under every category it mentions — `sort -u` is essential).
 - **Reference / in-place args** are prefixed with `~` on the var: `'*:='(~D::LieRepDec, c::RngIntElt)`.
 - **Untyped (Any) reference args** render as the angle-bracket token `<unknown>` (only angle-bracket form seen).
 - **Procedures** (no return) simply have **no `->`** and end after `)`.
-- **No `...` variadic token** — variadic intrinsics use a `List`-typed arg, rendered as a normal `x::List`.
 - Kernel-only examples (in `ListSignatures` but in NO `.m`): `Abs`, `AbsoluteOrder`, `AbsolutePrecision`,
   `AbelianBasis`, `Category`, `Type`.
+
+⚠️ **`ListSignatures(C)` silently OMITS variadic intrinsics** (verified: `ListSignatures(MonStgElt)`
+contains neither `Sprintf` nor any `...` line, yet `Sprintf` is an intrinsic). The earlier recon's
+"no `...` variadic token" claim was wrong — the REPL `name;` form *does* show them, e.g.
+`Sprintf(S::MonStgElt, ...) -> MonStgElt` and `Explode(x::SeqEnum) -> ., ...`. So the category
+enumeration misses variadic kernel intrinsics. **Recovery**: probe candidate names (call-targets
+harvested from the package corpus that aren't already in the DB) with `eval("<name>;")` — `eval`
+(not a bare `name;`) is required so a reserved-word candidate raises a *catchable runtime* error
+instead of a fatal parse error that aborts the whole batch. In practice only a couple of
+commonly-used intrinsics are recovered this way (`Explode`, `Sprintf`); the ~17k other missing
+call-targets are legitimate **package-local functions**, not intrinsics.
+
+⚠️ **Therefore a static "unknown intrinsic" diagnostic is NOT viable** as a default: real Magma code
+(package *and* user) is full of valid calls to non-intrinsic local/forward functions, so flagging
+"not in the signature DB" would produce many false positives. Deferred until it can lean on
+scope/binding resolution with high confidence.
 
 ### 4b. Package `.m` files — doc strings, optional params, house style
 
