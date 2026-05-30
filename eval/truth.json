@@ -1,0 +1,77 @@
+{
+  "ec_conductor": {
+    "prompt": "Print the conductor of the elliptic curve y^2 = x^3 - x over the rationals.",
+    "domain": "elliptic curves",
+    "expected": "32"
+  },
+  "ec_rank": {
+    "prompt": "Print (only) the Mordell-Weil rank of the elliptic curve y^2 = x^3 - 2 over Q.",
+    "domain": "elliptic curves",
+    "expected": "1"
+  },
+  "ec_points_ff": {
+    "prompt": "Print the number of points on the elliptic curve y^2 = x^3 + x + 1 over the finite field GF(101).",
+    "domain": "elliptic curves",
+    "expected": "105"
+  },
+  "nf_class_number": {
+    "prompt": "Print the class number of the imaginary quadratic field Q(sqrt(-23)).",
+    "domain": "number fields",
+    "expected": "3"
+  },
+  "nf_discriminant": {
+    "prompt": "Print the discriminant of the maximal order of the number field defined by x^3 - x - 1.",
+    "domain": "number fields",
+    "expected": "-23"
+  },
+  "minpoly_degree": {
+    "prompt": "Print the degree of the minimal polynomial over Q of sqrt(2) + sqrt(3).",
+    "domain": "number fields",
+    "expected": "4"
+  },
+  "ff_factor": {
+    "prompt": "Print the number of distinct irreducible factors of the polynomial x^4 + 1 over GF(3).",
+    "domain": "finite fields",
+    "expected": "2"
+  },
+  "grp_gl_order": {
+    "prompt": "Print the order of the general linear group GL(2, GF(3)).",
+    "domain": "groups",
+    "expected": "48"
+  },
+  "grp_sym_classes": {
+    "prompt": "Print the number of conjugacy classes of the symmetric group S_8.",
+    "domain": "groups",
+    "expected": "22"
+  },
+  "matrix_det": {
+    "prompt": "Print the determinant of the integer matrix [[2,1,0],[1,2,1],[0,1,2]].",
+    "domain": "linear algebra",
+    "expected": "4"
+  },
+  "modform_dim": {
+    "prompt": "Print the dimension of the space of weight-12 cusp forms for SL_2(Z) (level 1).",
+    "domain": "modular forms",
+    "expected": "1"
+  },
+  "partitions": {
+    "prompt": "Print the number of partitions of the integer 100.",
+    "domain": "combinatorics",
+    "expected": "190569292"
+  },
+  "nth_prime": {
+    "prompt": "Print the 1000th prime number.",
+    "domain": "number theory",
+    "expected": "7919"
+  },
+  "lattice_min": {
+    "prompt": "Print (only) the minimum (squared length of a shortest nonzero vector) of the root lattice E8.",
+    "domain": "lattices",
+    "expected": "2"
+  },
+  "cyclotomic_degree": {
+    "prompt": "Print the degree of the 100th cyclotomic polynomial (i.e. Euler phi of 100).",
+    "domain": "number theory",
+    "expected": "40"
+  }
+}

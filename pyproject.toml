@@ -17,6 +17,7 @@ dependencies = [
 [project.scripts]
 magma-lsp = "magma_lsp.server:main"
 magma-lsp-build-db = "magma_lsp.db.build:main"
+magma-lsp-cli = "magma_lsp.cli:main"
 
 [project.optional-dependencies]
 dev = [
