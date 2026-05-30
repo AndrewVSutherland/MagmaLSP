@@ -73,6 +73,20 @@ def test_ditto_doc_resolves_to_previous_overload(by_name):
     assert second.doc == first.doc  # {"} resolved
 
 
+def test_commented_out_intrinsic_is_skipped(tmp_path):
+    # `intrinsic // ...` is a commented-out declaration; its "name" is a comment node -> skip.
+    f = tmp_path / "x.m"
+    f.write_text(
+        "intrinsic Good(x::RngIntElt) -> RngIntElt {d} return x; end intrinsic;\n"
+        "intrinsic // poles and residues could be obsolete\n"
+        "{junk} return 0; end intrinsic;\n"
+    )
+    sigs = extract_file(f)
+    names = [s.name for s in sigs]
+    assert "Good" in names
+    assert not any(n.startswith("//") for n in names)
+
+
 def test_render_roundtrips_optionals(by_name):
     (s,) = by_name["WithOptionals"]
     assert s.render() == (

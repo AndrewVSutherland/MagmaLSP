@@ -69,9 +69,13 @@ def _opt_param(node: Node) -> Param | None:
     return Param(name=lhs.strip(), default=_norm(rhs))
 
 
-def extract_signature(node: Node, *, file: str | None = None) -> Signature:
+def extract_signature(node: Node, *, file: str | None = None) -> Signature | None:
     name_node = named_child_after(node, "intrinsic")
-    name = node_text(name_node) if name_node is not None else "?"
+    # The name must be an identifier (bareword or quoted operator). Anything else means a malformed
+    # or commented-out declaration, e.g. `intrinsic // poles and residues ...` -> skip it.
+    if name_node is None or name_node.type != "identifier":
+        return None
+    name = node_text(name_node)
 
     args: list[Param] = []
     opt_params: list[Param] = []
@@ -126,6 +130,8 @@ def extract_file(path: str | Path) -> list[Signature]:
     last_doc: dict[str, str | None] = {}
     for node in _iter_intrinsic_defs(tree.root_node):
         sig = extract_signature(node, file=path)
+        if sig is None:
+            continue
         if sig.doc == DITTO:
             sig.doc = last_doc.get(sig.name)
         else:
