@@ -135,7 +135,10 @@ intrinsic, and errors if called without an import. So flag a call only when its 
 in the signature DB *nor* available in the document (defined/imported/forward/bound — see
 `analysis/scope.py`). Measured false-positive rate on the package corpus (worst case, with cross-file
 package siblings) with this scope model: **~0.07%** (vs. ~38% naïvely). The earlier "not viable"
-worry was an artifact of not excluding imports/forwards/defs. Note Magma's own binding pass
+worry was an artifact of not excluding imports/forwards/defs. A bounded **project-wide scan** of the
+workspace's other `.m` files (`analysis/workspace.py` → their `defined_symbols`) folds sibling
+definitions into the known set, dropping the residual to **~0.025%** (the rest are genuine package
+quirks, e.g. a file importing from an absolute developer path). Note Magma's own binding pass
 (`magma.validate.syntax_check`) is the *authoritative* undefined-name check when Magma is available
 (it reports `Identifier ... has not been declared or assigned`); the static check is the fast,
 every-keystroke, offline complement.

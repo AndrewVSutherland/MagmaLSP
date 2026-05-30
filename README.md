@@ -20,7 +20,8 @@ Magma and the build environment.
   - **Magma-backed** syntax/binding check via a sandboxed, never-called-function wrap (CLAUDE.md §5) —
     the authoritative undefined-name check when Magma is available;
   - **static "unknown intrinsic"** check — flags a call whose target is neither a known intrinsic nor
-    defined/imported/forward-declared in the file (the fast, every-edit, offline complement);
+    defined/imported/forward-declared in the file, nor defined in a sibling `.m` file of the project
+    (a bounded workspace scan); the fast, every-edit, offline complement to the Magma pass;
   - **static lints Magma doesn't provide** — unused/dead local variables (CLAUDE.md §13);
   - tree-sitter syntax errors as a fast fallback when Magma is unavailable.
 - **Document symbols** (intrinsics, top-level functions/procedures) from the tree-sitter AST.
