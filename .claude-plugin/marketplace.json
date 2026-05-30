@@ -1,0 +1,14 @@
+{
+  "name": "magma-lsp-marketplace",
+  "owner": { "name": "MagmaLSP contributors" },
+  "metadata": {
+    "description": "Marketplace hosting the Magma language server plugin for Claude Code"
+  },
+  "plugins": [
+    {
+      "name": "magma-lsp",
+      "source": ".",
+      "description": "Signature intelligence and Magma-backed diagnostics for Magma (.magma / .m) files"
+    }
+  ]
+}
