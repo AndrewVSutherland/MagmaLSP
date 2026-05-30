@@ -1,0 +1,152 @@
+[
+  {
+    "task_id": "ec_conductor",
+    "condition": "closed",
+    "code": "E := EllipticCurve([0, 0, 0, -1, 0]);\nSetColumns(0);\nprintf \"%o\\n\", Conductor(E);\n"
+  },
+  {
+    "task_id": "ec_conductor",
+    "condition": "lsp",
+    "code": "SetColumns(0);\nSetEchoInput(false);\nE := EllipticCurve([0, 0, 0, -1, 0]);\nprint Conductor(E);\n"
+  },
+  {
+    "task_id": "ec_rank",
+    "condition": "closed",
+    "code": "E := EllipticCurve([0, 0, 0, 0, -2]);\nr, _ := Rank(E);\nprint r;\n"
+  },
+  {
+    "task_id": "ec_rank",
+    "condition": "lsp",
+    "code": "SetColumns(0);\nE := EllipticCurve([0, 0, 0, 0, -2]);  // y^2 = x^3 - 2, i.e. [a1,a2,a3,a4,a6] = [0,0,0,0,-2]\nA, _, _, _ := MordellWeilGroup(E);\nprint TorsionFreeRank(A);\n"
+  },
+  {
+    "task_id": "ec_points_ff",
+    "condition": "closed",
+    "code": "E := EllipticCurve([GF(101) | 1, 1]);\nprint #E;\n"
+  },
+  {
+    "task_id": "ec_points_ff",
+    "condition": "lsp",
+    "code": "SetColumns(0);\nSetEchoInput(false);\nE := EllipticCurve([GF(101) | 1, 1]);\nprint #Points(E);\n"
+  },
+  {
+    "task_id": "nf_class_number",
+    "condition": "closed",
+    "code": "K := QuadraticField(-23);\nh := ClassNumber(K);\nprint h;\n"
+  },
+  {
+    "task_id": "nf_class_number",
+    "condition": "lsp",
+    "code": "K := QuadraticField(-23);\nprint ClassNumber(RingOfIntegers(K));\n"
+  },
+  {
+    "task_id": "nf_discriminant",
+    "condition": "closed",
+    "code": "Q := RationalField();\nR<x> := PolynomialRing(Q);\nf := x^3 - x - 1;\nK := NumberField(f);\nO := MaximalOrder(K);\nprint Discriminant(O);\n"
+  },
+  {
+    "task_id": "nf_discriminant",
+    "condition": "lsp",
+    "code": "SetColumns(0);\nSetEchoInput(false);\nSetIgnorePrompt(true);\n\nR<x> := PolynomialRing(Rationals());\nK := NumberField(x^3 - x - 1);\nO := MaximalOrder(K);\nprint Discriminant(O);\n"
+  },
+  {
+    "task_id": "minpoly_degree",
+    "condition": "closed",
+    "code": "SetColumns(0);\nSetEchoInput(false);\nQ := RationalField();\nR<x> := PolynomialRing(Q);\nK<a> := NumberField(x^2 - 2);\nS<y> := PolynomialRing(K);\nL<b> := ext<K | y^2 - 3>;\nalpha := a + b;\nf := MinimalPolynomial(alpha, Q);\nprint Degree(f);\n"
+  },
+  {
+    "task_id": "minpoly_degree",
+    "condition": "lsp",
+    "code": "SetColumns(0);\nSetEchoInput(false);\n\n// Build Q(sqrt(2), sqrt(3)) as a compositum\n// First, Q(sqrt(2)): minimal poly x^2 - 2\nQx<x> := PolynomialRing(Rationals());\nK<a> := NumberField(x^2 - 2);\n\n// Extend by sqrt(3): minimal poly over K is y^2 - 3\nKy<y> := PolynomialRing(K);\nL<b> := NumberField(y^2 - 3);\n\n// Element sqrt(2) + sqrt(3) in L\nalpha := a + b;\n\n// Minimal polynomial of alpha over Q (absolute, not relative)\nf := AbsoluteMinimalPolynomial(alpha);\nprint Degree(f);\n"
+  },
+  {
+    "task_id": "ff_factor",
+    "condition": "closed",
+    "code": "F := GF(3);\nP<x> := PolynomialRing(F);\nf := x^4 + 1;\nfacts := Factorization(f);\nprint #facts;\n"
+  },
+  {
+    "task_id": "ff_factor",
+    "condition": "lsp",
+    "code": "SetColumns(0);\nSetEchoInput(false);\nF := GF(3);\nP<x> := PolynomialRing(F);\nf := x^4 + 1;\nfacts := Factorization(f);\nprint #facts;\n"
+  },
+  {
+    "task_id": "grp_gl_order",
+    "condition": "closed",
+    "code": "print #GL(2, GF(3));"
+  },
+  {
+    "task_id": "grp_gl_order",
+    "condition": "lsp",
+    "code": "SetColumns(0);\nG := GL(2, GF(3));\nprint #G;\n"
+  },
+  {
+    "task_id": "grp_sym_classes",
+    "condition": "closed",
+    "code": "print NumberOfClasses(SymmetricGroup(8));"
+  },
+  {
+    "task_id": "grp_sym_classes",
+    "condition": "lsp",
+    "code": "SetColumns(0);\nSetEchoInput(false);\nSetIgnorePrompt(true);\nG := SymmetricGroup(8);\nprint NumberOfClasses(G);\n"
+  },
+  {
+    "task_id": "matrix_det",
+    "condition": "closed",
+    "code": "SetColumns(0);\nSetEchoInput(false);\nSetIgnorePrompt(true);\nM := Matrix(Integers(), 3, 3, [2,1,0, 1,2,1, 0,1,2]);\nprint Determinant(M);\n"
+  },
+  {
+    "task_id": "matrix_det",
+    "condition": "lsp",
+    "code": "SetColumns(0);\nSetEchoInput(false);\nM := Matrix(Integers(), 3, 3, [2,1,0, 1,2,1, 0,1,2]);\nprint Determinant(M);\n"
+  },
+  {
+    "task_id": "modform_dim",
+    "condition": "closed",
+    "code": "SetColumns(0);\nSetEchoInput(false);\nM := CuspForms(1, 12);\nprint Dimension(M);\n"
+  },
+  {
+    "task_id": "modform_dim",
+    "condition": "lsp",
+    "code": "SetColumns(0);\nSetEchoInput(false);\nS := CuspForms(1, 12);\nprint Dimension(S);\n"
+  },
+  {
+    "task_id": "partitions",
+    "condition": "closed",
+    "code": "SetColumns(0);\nprint NumberOfPartitions(100);\n"
+  },
+  {
+    "task_id": "partitions",
+    "condition": "lsp",
+    "code": "SetColumns(0);\nprint NumberOfPartitions(100);\n"
+  },
+  {
+    "task_id": "nth_prime",
+    "condition": "closed",
+    "code": "SetColumns(0);\nSetEchoInput(false);\nSetIgnorePrompt(true);\nprint NthPrime(1000);\n"
+  },
+  {
+    "task_id": "nth_prime",
+    "condition": "lsp",
+    "code": "SetColumns(0);\nSetEchoInput(false);\nprint NthPrime(1000);\n"
+  },
+  {
+    "task_id": "lattice_min",
+    "condition": "closed",
+    "code": "L := RootLattice(\"E\", 8);\nprint Minimum(L);\n"
+  },
+  {
+    "task_id": "lattice_min",
+    "condition": "lsp",
+    "code": "SetColumns(0);\nSetEchoInput(false);\nSetIgnorePrompt(true);\nL := Lattice(\"E\", 8);\nprint Minimum(L);\n"
+  },
+  {
+    "task_id": "cyclotomic_degree",
+    "condition": "closed",
+    "code": "SetColumns(0);\nSetEchoInput(false);\nSetIgnorePrompt(true);\nprint EulerPhi(100);\n"
+  },
+  {
+    "task_id": "cyclotomic_degree",
+    "condition": "lsp",
+    "code": "SetColumns(0);\nSetEchoInput(false);\nprint EulerPhi(100);\n"
+  }
+]
