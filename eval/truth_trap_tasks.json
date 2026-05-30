@@ -1,0 +1,72 @@
+{
+  "subgroups_s4": {
+    "prompt": "Print the total number of subgroups of the symmetric group S_4 — count every subgroup individually, not one representative per conjugacy class.",
+    "domain": "groups",
+    "expected": "30"
+  },
+  "omega_1e6": {
+    "prompt": "Print the number of prime factors of 1000000 counted with multiplicity (i.e. the total number of primes appearing in its prime factorization, the function Omega).",
+    "domain": "integers",
+    "expected": "12"
+  },
+  "roots_mult": {
+    "prompt": "Print the number of roots of (x-1)^3*(x-2)^2 in the rationals, counted with multiplicity.",
+    "domain": "polynomials",
+    "expected": "5"
+  },
+  "proper_div_sum": {
+    "prompt": "Print the sum of the proper divisors of 220 (the positive divisors of 220, excluding 220 itself).",
+    "domain": "integers",
+    "expected": "284"
+  },
+  "int_quotient": {
+    "prompt": "Print the integer quotient (the floor) when 1000000 is divided by 7.",
+    "domain": "integers",
+    "expected": "142857"
+  },
+  "leading_coeff": {
+    "prompt": "Print the leading coefficient of the polynomial 3*x^5 + 2*x + 7.",
+    "domain": "polynomials",
+    "expected": "3"
+  },
+  "distinct_partitions": {
+    "prompt": "Print the number of partitions of 20 into distinct parts (partitions in which no part is repeated).",
+    "domain": "combinatorics",
+    "expected": "64"
+  },
+  "cusp_dim": {
+    "prompt": "Print the dimension of the space of weight-12 cusp forms of level 1 (for SL_2(Z)).",
+    "domain": "modular forms",
+    "expected": "1"
+  },
+  "minpoly_deg": {
+    "prompt": "Print the degree of the minimal polynomial of the 2x2 scalar matrix 2*I (the diagonal matrix whose two diagonal entries both equal 2).",
+    "domain": "linear algebra",
+    "expected": "1"
+  },
+  "field_disc": {
+    "prompt": "Print the discriminant of the number field Q[x]/(x^3 - x^2 - 2*x - 8) — the discriminant of the field itself (equivalently of its ring of integers / maximal order).",
+    "domain": "number fields",
+    "expected": "-503"
+  },
+  "largest_class": {
+    "prompt": "Print the size of the largest conjugacy class of the symmetric group S_6.",
+    "domain": "groups",
+    "expected": "144"
+  },
+  "real_roots": {
+    "prompt": "Print the number of real roots of the polynomial x^5 - x - 1.",
+    "domain": "polynomials",
+    "expected": "1"
+  },
+  "exp_floor": {
+    "prompt": "Print the floor of exp(pi * sqrt(2023)) as an exact integer, with every digit correct.",
+    "domain": "real analysis",
+    "expected": "23259959722789261084005461956136877315656540717484560711421827"
+  },
+  "qr_mod7": {
+    "prompt": "Print 1 if 2 is a square modulo 7, and 0 otherwise.",
+    "domain": "finite fields",
+    "expected": "1"
+  }
+}
