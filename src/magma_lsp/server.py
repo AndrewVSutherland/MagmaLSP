@@ -21,6 +21,7 @@ from pygls.uris import from_fs_path
 from . import __version__
 from .analysis.lints import unused_variables
 from .analysis.symbols import Symbol, document_symbols
+from .analysis.undefined import undefined_intrinsics
 from .db.index import SignatureIndex
 from .db.model import Signature
 from .db.store import newest_cached_db
@@ -41,13 +42,16 @@ class MagmaLanguageServer(LanguageServer):
         self.magma_available: bool = False
         self.enable_magma_diagnostics: bool = True
         self.enable_lints: bool = True
+        self.enable_unknown_intrinsics: bool = True
         self.magma_timeout: float = 10.0
+        self.intrinsic_names: frozenset[str] = frozenset()
 
     def configure(self, init_options: dict | None) -> None:
         opts = init_options or {}
         self.magma_path = opts.get("magmaPath")
         self.enable_magma_diagnostics = opts.get("magmaDiagnostics", True)
         self.enable_lints = opts.get("lints", True)
+        self.enable_unknown_intrinsics = opts.get("unknownIntrinsics", True)
         self.magma_timeout = float(opts.get("magmaTimeout", 10.0))
         self.magma_available = find_magma(self.magma_path) is not None
 
@@ -55,8 +59,8 @@ class MagmaLanguageServer(LanguageServer):
         if db_path:
             try:
                 self.index = SignatureIndex.from_path(db_path)
-                n = len(self.index.db.intrinsics)
-                logger.info("loaded signature DB %s (%d names)", db_path, n)
+                self.intrinsic_names = frozenset(self.index.db.intrinsics)
+                logger.info("loaded signature DB %s (%d names)", db_path, len(self.intrinsic_names))
             except Exception as exc:
                 logger.warning("failed to load signature DB %s: %s", db_path, exc)
         else:
@@ -184,24 +188,31 @@ def _compute_diagnostics(
             logger.warning("magma syntax check failed: %s", exc)
     else:
         diags.extend(_tree_sitter_syntax_errors(text))
+        # Static undefined-intrinsic check: the fast/offline complement to Magma's binding pass.
+        # Skipped when the Magma pass ran above (it is authoritative for undefined names).
+        if ls.enable_unknown_intrinsics and ls.intrinsic_names:
+            for lint in undefined_intrinsics(text, ls.intrinsic_names):
+                diags.append(_lint_diagnostic(lint))
 
     if ls.enable_lints:
         for lint in unused_variables(text):
-            diags.append(
-                t.Diagnostic(
-                    range=t.Range(
-                        start=t.Position(lint.line, lint.col),
-                        end=t.Position(lint.end_line, lint.end_col),
-                    ),
-                    message=lint.message,
-                    severity=t.DiagnosticSeverity.Warning
-                    if lint.severity == "warning"
-                    else t.DiagnosticSeverity.Hint,
-                    source="magma-lsp",
-                    tags=[t.DiagnosticTag.Unnecessary] if lint.unnecessary else None,
-                )
-            )
+            diags.append(_lint_diagnostic(lint))
     return diags
+
+
+def _lint_diagnostic(lint) -> t.Diagnostic:
+    return t.Diagnostic(
+        range=t.Range(
+            start=t.Position(lint.line, lint.col),
+            end=t.Position(lint.end_line, lint.end_col),
+        ),
+        message=lint.message,
+        severity=t.DiagnosticSeverity.Warning
+        if lint.severity == "warning"
+        else t.DiagnosticSeverity.Hint,
+        source="magma-lsp",
+        tags=[t.DiagnosticTag.Unnecessary] if lint.unnecessary else None,
+    )
 
 
 def _tree_sitter_syntax_errors(text: str) -> list[t.Diagnostic]:

@@ -46,6 +46,18 @@ def test_compute_diagnostics_lints_only():
     assert lint.tags == [t.DiagnosticTag.Unnecessary]
 
 
+def test_unknown_intrinsic_on_fast_path():
+    ls = srv.MagmaLanguageServer()
+    ls.magma_available = False  # fast path -> static undefined check runs
+    ls.enable_unknown_intrinsics = True
+    ls.intrinsic_names = frozenset({"EllipticCurve"})
+    diags = srv._compute_diagnostics(ls, "E := EllipitcCurve([0,1]);\n", run_magma=False)
+    assert any("EllipitcCurve" in d.message and "not a known intrinsic" in d.message for d in diags)
+    # a real intrinsic is clean
+    clean = srv._compute_diagnostics(ls, "E := EllipticCurve([0,1]);\n", run_magma=False)
+    assert not any("not a known intrinsic" in d.message for d in clean)
+
+
 def test_tree_sitter_syntax_error_path():
     ls = srv.MagmaLanguageServer()
     ls.magma_available = False

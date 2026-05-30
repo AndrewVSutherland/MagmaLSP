@@ -128,10 +128,17 @@ instead of a fatal parse error that aborts the whole batch. In practice only a c
 commonly-used intrinsics are recovered this way (`Explode`, `Sprintf`); the ~17k other missing
 call-targets are legitimate **package-local functions**, not intrinsics.
 
-⚠️ **Therefore a static "unknown intrinsic" diagnostic is NOT viable** as a default: real Magma code
-(package *and* user) is full of valid calls to non-intrinsic local/forward functions, so flagging
-"not in the signature DB" would produce many false positives. Deferred until it can lean on
-scope/binding resolution with high confidence.
+**Static "unknown intrinsic" diagnostic — viable with scope modeling.** A call `Foo(...)` is
+genuinely undefined in Magma unless `Foo` is an intrinsic, defined locally, `forward`-declared, or
+**`import`ed** (`import "file.m": Foo;`) — e.g. `ChangeBaseRing` is a package-local function, not an
+intrinsic, and errors if called without an import. So flag a call only when its target is *neither*
+in the signature DB *nor* available in the document (defined/imported/forward/bound — see
+`analysis/scope.py`). Measured false-positive rate on the package corpus (worst case, with cross-file
+package siblings) with this scope model: **~0.07%** (vs. ~38% naïvely). The earlier "not viable"
+worry was an artifact of not excluding imports/forwards/defs. Note Magma's own binding pass
+(`magma.validate.syntax_check`) is the *authoritative* undefined-name check when Magma is available
+(it reports `Identifier ... has not been declared or assigned`); the static check is the fast,
+every-keystroke, offline complement.
 
 ### 4b. Package `.m` files — doc strings, optional params, house style
 

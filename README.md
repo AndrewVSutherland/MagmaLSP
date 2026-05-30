@@ -17,7 +17,10 @@ Magma and the build environment.
   - a `name;` probe to recover variadic intrinsics (`Sprintf`, `Explode`) that `ListSignatures` omits.
   - Powers **hover**, **completion**, **signature help**, **go-to-definition**, and **workspace symbols**.
 - **Diagnostics** pushed to the editor after each edit:
-  - **Magma-backed** syntax/binding check via a sandboxed, never-called-function wrap (CLAUDE.md §5);
+  - **Magma-backed** syntax/binding check via a sandboxed, never-called-function wrap (CLAUDE.md §5) —
+    the authoritative undefined-name check when Magma is available;
+  - **static "unknown intrinsic"** check — flags a call whose target is neither a known intrinsic nor
+    defined/imported/forward-declared in the file (the fast, every-edit, offline complement);
   - **static lints Magma doesn't provide** — unused/dead local variables (CLAUDE.md §13);
   - tree-sitter syntax errors as a fast fallback when Magma is unavailable.
 - **Document symbols** (intrinsics, top-level functions/procedures) from the tree-sitter AST.
