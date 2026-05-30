@@ -9,7 +9,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import sys
 
 from magma_lsp.magma.diagnostics import parse_diagnostics
 from magma_lsp.magma.runner import run_source
@@ -35,27 +34,42 @@ def score_program(code: str, expected: str, *, timeout: float = 60.0) -> dict:
     }
 
 
-def score_results(results: list[dict], truth: dict[str, dict]) -> list[dict]:
-    """results: [{task_id, condition, code, ...}] -> adds scoring fields."""
-    scored = []
-    for r in results:
-        t = truth.get(r["task_id"])
-        if t is None:
-            continue
-        s = score_program(r.get("code", ""), t["expected"])
-        scored.append({**r, **s, "expected": t["expected"], "domain": t["domain"]})
-    return scored
+def _score_one(args: tuple[dict, str, str, float]) -> dict:
+    r, expected, domain, timeout = args
+    s = score_program(r.get("code", ""), expected, timeout=timeout)
+    return {**r, **s, "expected": expected, "domain": domain}
+
+
+def score_results(
+    results: list[dict], truth: dict[str, dict], *, timeout: float = 120.0, workers: int = 48
+) -> list[dict]:
+    """Score each generation by running it in Magma (in parallel across the cores)."""
+    from concurrent.futures import ProcessPoolExecutor
+
+    jobs = [
+        (r, truth[r["task_id"]]["expected"], truth[r["task_id"]].get("domain", ""), timeout)
+        for r in results
+        if r["task_id"] in truth
+    ]
+    with ProcessPoolExecutor(max_workers=workers) as pool:
+        return list(pool.map(_score_one, jobs))
 
 
 def main() -> int:
+    import argparse
+
     here = os.path.dirname(__file__)
-    with open(os.path.join(here, "truth.json"), encoding="utf-8") as fh:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("generations", nargs="?", default=os.path.join(here, "generations.json"))
+    ap.add_argument("--truth", default=os.path.join(here, "truth.json"))
+    ap.add_argument("--out", default=os.path.join(here, "scored.json"))
+    args = ap.parse_args()
+    with open(args.truth, encoding="utf-8") as fh:
         truth = json.load(fh)
-    gen_path = sys.argv[1] if len(sys.argv) > 1 else os.path.join(here, "generations.json")
-    with open(gen_path, encoding="utf-8") as fh:
+    with open(args.generations, encoding="utf-8") as fh:
         results = json.load(fh)
     scored = score_results(results, truth)
-    out_path = os.path.join(here, "scored.json")
+    out_path = args.out
     with open(out_path, "w", encoding="utf-8") as fh:
         json.dump(scored, fh, indent=2, ensure_ascii=False)
     print(f"scored {len(scored)} -> {out_path}")
