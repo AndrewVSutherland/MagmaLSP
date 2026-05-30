@@ -55,6 +55,17 @@ def test_scope_collects_imports_and_defs():
     assert {c.name for c in calls} == {"A", "B", "C", "h"}
 
 
+def test_comprehension_and_loop_binders_are_known():
+    # Regression: binders introduced by `in` (for-loops, list/set comprehensions, quantifiers)
+    # must count as defined, so calling them is not flagged. Found by the handbook differential.
+    # Each call target below IS the binder, so nothing should be flagged.
+    assert names("r := [ c(a) : c in C ];\n") == set()  # list-comprehension binder c
+    assert names("for phi in A do x := phi(w); end for;\n") == set()  # for-loop var phi
+    assert names("s := { i(a) : i in [1..10] };\n") == set()  # set-comprehension binder i
+    # and a genuine undefined call inside a comprehension is still flagged
+    assert names("r := [ Bogus(c) : c in C ];\n") == {"Bogus"}
+
+
 def test_position_points_at_call_target():
     (lint,) = undefined_intrinsics("  z := Bogus(1);\n", INTRINSICS)
     assert lint.line == 0

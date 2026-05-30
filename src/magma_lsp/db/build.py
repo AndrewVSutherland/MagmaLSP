@@ -22,6 +22,7 @@ from .listsig import enumerate_signatures
 from .model import Intrinsic, MagmaDB, Signature
 from .package import extract_file, iter_package_files
 from .probe import harvest_call_targets, probe_names
+from .spec import attached_files
 from .store import db_path_for_version
 
 DEFAULT_PACKAGE_ROOT = "/opt/magma/package"
@@ -56,8 +57,13 @@ def _sig_type_key(sig: Signature) -> tuple:
     return (sig.name, tuple((p.type or "") for p in sig.args))
 
 
-def extract_package(root: str, *, workers: int | None = None) -> list[Signature]:
+def extract_package(
+    root: str, *, workers: int | None = None, only_files: set[str] | None = None
+) -> list[Signature]:
     files = list(iter_package_files(root))
+    if only_files is not None:
+        norm = {os.path.normpath(f) for f in only_files}
+        files = [f for f in files if os.path.normpath(f) in norm]
     sigs: list[Signature] = []
     workers = workers or min(32, (os.cpu_count() or 4))
     with ProcessPoolExecutor(max_workers=workers) as pool:
@@ -113,9 +119,20 @@ def build_db(
     workers: int | None = None,
     include_kernel: bool = True,
     probe_missing: bool = True,
+    use_spec: bool = True,
 ) -> MagmaDB:
     version = detect_version(magma_path, package_root)
-    package_sigs = extract_package(package_root, workers=workers)
+
+    # Only extract intrinsics from spec-attached files: a default Magma session loads just those,
+    # so extracting from every .m over-includes intrinsics from non-attached packages (CompTree,
+    # test files, ...) that Magma doesn't register. Validated to lift Magma-confirmation to ~100%.
+    only_files: set[str] | None = None
+    if use_spec:
+        spec_path = os.path.join(package_root, "spec")
+        if os.path.isfile(spec_path):
+            only_files = attached_files(spec_path)
+            print(f"spec: {len(only_files)} attached .m files", file=sys.stderr)
+    package_sigs = extract_package(package_root, workers=workers, only_files=only_files)
 
     have_magma = find_magma(magma_path) is not None
     kernel_sigs: list[Signature] = []
