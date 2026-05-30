@@ -82,6 +82,13 @@ def analyze(source: bytes | str) -> tuple[set[str], list[CallSite]]:
                 if c.type == "identifier":
                     available.add(c.text.decode("utf-8", "replace"))
                     break
+        elif t == "in":
+            # Binder of a for-loop (`for phi in A`), comprehension (`[ e : c in C ]`), or
+            # quantifier (`forall x in S`): the identifier immediately before `in` is bound.
+            # (A membership test `x in S` harmlessly re-adds an already-defined name.)
+            prev = node.prev_sibling
+            if prev is not None and prev.type == "identifier":
+                available.add(prev.text.decode("utf-8", "replace"))
         elif t in _BIND_LISTS:
             for c in node.children:
                 if c.type == "identifier":
