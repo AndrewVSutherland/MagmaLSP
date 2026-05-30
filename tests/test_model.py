@@ -44,3 +44,11 @@ def test_index_queries():
     hover = idx.hover_markdown("Factorial")
     assert "```magma" in hover and "The factorial of n." in hover
     assert idx.lookup("Nope") is None
+
+
+def test_search_symbols_only_returns_located_intrinsics():
+    idx = SignatureIndex(_sample_db())
+    hits = idx.search_symbols("a")  # matches Factorial (has source) and Abs (kernel, no source)
+    names = [n for n, _ in hits]
+    assert "Factorial" in names
+    assert "Abs" not in names  # kernel intrinsic has no source location -> not navigable

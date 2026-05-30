@@ -21,6 +21,7 @@ from ..magma.runner import find_magma, run_source
 from .listsig import enumerate_signatures
 from .model import Intrinsic, MagmaDB, Signature
 from .package import extract_file, iter_package_files
+from .probe import harvest_call_targets, probe_names
 from .store import db_path_for_version
 
 DEFAULT_PACKAGE_ROOT = "/opt/magma/package"
@@ -111,13 +112,15 @@ def build_db(
     enum_timeout: float = 180.0,
     workers: int | None = None,
     include_kernel: bool = True,
+    probe_missing: bool = True,
 ) -> MagmaDB:
     version = detect_version(magma_path, package_root)
     package_sigs = extract_package(package_root, workers=workers)
 
+    have_magma = find_magma(magma_path) is not None
     kernel_sigs: list[Signature] = []
     if include_kernel:
-        if find_magma(magma_path) is None:
+        if not have_magma:
             print(
                 "warning: Magma not found; building package-only DB "
                 "(no kernel intrinsics). Re-run when Magma is available to add them.",
@@ -132,7 +135,26 @@ def build_db(
                     "building package-only DB. This is usually a Magma licensing/auth issue.",
                     file=sys.stderr,
                 )
-    return merge(package_sigs, kernel_sigs, version)
+
+    db = merge(package_sigs, kernel_sigs, version)
+
+    # ListSignatures(Cat) omits variadic intrinsics (Sprintf, Explode, ...). Recover the ones
+    # actually used in package code by probing missing-from-DB call-targets with `name;`.
+    if probe_missing and have_magma and kernel_sigs:
+        candidates = sorted(harvest_call_targets(package_root) - set(db.intrinsics))
+        recovered = probe_names(candidates, magma_path=magma_path, timeout=enum_timeout)
+        rec_sigs = 0
+        for name, sigs in recovered.items():
+            if name not in db.intrinsics:
+                db.intrinsics[name] = Intrinsic(name=name, signatures=sigs)
+                rec_sigs += len(sigs)
+        db.stats["probed_candidates"] = len(candidates)
+        db.stats["recovered_intrinsics"] = len(recovered)
+        db.stats["recovered_signatures"] = rec_sigs
+        db.stats["names"] = len(db.intrinsics)
+        db.stats["total_signatures"] = sum(len(i.signatures) for i in db.intrinsics.values())
+        db.stats["documented_names"] = sum(1 for i in db.intrinsics.values() if i.has_doc)
+    return db
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -144,6 +166,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--out", default=None, help="output path (default: per-version cache path)")
     ap.add_argument("--workers", type=int, default=None)
     ap.add_argument("--enum-timeout", type=float, default=180.0)
+    ap.add_argument(
+        "--no-probe",
+        action="store_true",
+        help="skip recovering variadic intrinsics (Sprintf, Explode) that ListSignatures omits",
+    )
     args = ap.parse_args(argv)
 
     if not Path(args.package_root).is_dir():
@@ -161,6 +188,7 @@ def main(argv: list[str] | None = None) -> int:
         magma_path=args.magma_path,
         enum_timeout=args.enum_timeout,
         workers=args.workers,
+        probe_missing=not args.no_probe,
     )
     out = Path(args.out) if args.out else db_path_for_version(db.version)
     out.parent.mkdir(parents=True, exist_ok=True)

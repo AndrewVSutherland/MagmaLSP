@@ -41,6 +41,20 @@ class SignatureIndex:
         out = [n for n in self._names_sorted if n[:1].isalpha() and n.lower().startswith(pl)]
         return out[:limit]
 
+    def search_symbols(self, query: str, *, limit: int = 200) -> list[tuple[str, SourceLocation]]:
+        """Package intrinsics whose name contains `query` (case-insensitive), with a location."""
+        q = query.lower()
+        out: list[tuple[str, SourceLocation]] = []
+        for name in self._names_sorted:
+            if q and q not in name.lower():
+                continue
+            loc = self.definition(name)
+            if loc is not None:
+                out.append((name, loc))
+                if len(out) >= limit:
+                    break
+        return out
+
     def definition(self, name: str) -> SourceLocation | None:
         intr = self.db.get(name)
         if not intr:
