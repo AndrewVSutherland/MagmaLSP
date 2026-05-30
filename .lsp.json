@@ -9,7 +9,9 @@
     "initializationOptions": {
       "magmaPath": "/opt/magma/magma",
       "magmaDiagnostics": true,
-      "lints": true
+      "lints": true,
+      "unknownIntrinsics": true,
+      "workspaceSymbols": true
     },
     "restartOnCrash": true,
     "maxRestarts": 5

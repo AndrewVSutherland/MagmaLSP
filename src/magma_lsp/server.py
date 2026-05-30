@@ -12,16 +12,18 @@ Diagnostics strategy:
 from __future__ import annotations
 
 import logging
+import os
 import re
 
 from lsprotocol import types as t
 from pygls.lsp.server import LanguageServer
-from pygls.uris import from_fs_path
+from pygls.uris import from_fs_path, to_fs_path
 
 from . import __version__
 from .analysis.lints import unused_variables
 from .analysis.symbols import Symbol, document_symbols
 from .analysis.undefined import undefined_intrinsics
+from .analysis.workspace import scan_workspace
 from .db.index import SignatureIndex
 from .db.model import Signature
 from .db.store import newest_cached_db
@@ -45,6 +47,11 @@ class MagmaLanguageServer(LanguageServer):
         self.enable_unknown_intrinsics: bool = True
         self.magma_timeout: float = 10.0
         self.intrinsic_names: frozenset[str] = frozenset()
+        # Names defined across the project's own .m files (sibling helpers); see analysis/workspace.
+        self.enable_workspace_symbols: bool = True
+        self.workspace_max_files: int = 2000
+        self.workspace_roots: list[str] = []
+        self.workspace_symbols: frozenset[str] = frozenset()
 
     def configure(self, init_options: dict | None) -> None:
         opts = init_options or {}
@@ -52,6 +59,8 @@ class MagmaLanguageServer(LanguageServer):
         self.enable_magma_diagnostics = opts.get("magmaDiagnostics", True)
         self.enable_lints = opts.get("lints", True)
         self.enable_unknown_intrinsics = opts.get("unknownIntrinsics", True)
+        self.enable_workspace_symbols = opts.get("workspaceSymbols", True)
+        self.workspace_max_files = int(opts.get("workspaceMaxFiles", 2000))
         self.magma_timeout = float(opts.get("magmaTimeout", 10.0))
         self.magma_available = find_magma(self.magma_path) is not None
 
@@ -68,6 +77,31 @@ class MagmaLanguageServer(LanguageServer):
                 "no signature DB found; run `magma-lsp-build-db`. "
                 "Hover/completion/definition will be limited until then."
             )
+
+    def rescan_workspace(self) -> None:
+        if not (self.enable_workspace_symbols and self.enable_unknown_intrinsics):
+            return
+        roots = list(self.workspace_roots)
+        if not roots:
+            return
+        try:
+            scan = scan_workspace(roots, max_files=self.workspace_max_files)
+        except Exception as exc:  # never let a scan crash the server
+            logger.warning("workspace scan failed: %s", exc)
+            return
+        self.workspace_symbols = scan.names
+        if scan.truncated:
+            logger.info(
+                "workspace too large to scan (> %d .m files); skipping project-symbol scan",
+                self.workspace_max_files,
+            )
+        else:
+            logger.info(
+                "workspace scan: %d names from %d files", len(scan.names), scan.files_scanned
+            )
+
+    def known_call_names(self) -> frozenset[str]:
+        return self.intrinsic_names | self.workspace_symbols
 
 
 server = MagmaLanguageServer()
@@ -120,6 +154,13 @@ def _sig_label(sig: Signature) -> str:
 @server.feature(t.INITIALIZE)
 def on_initialize(ls: MagmaLanguageServer, params: t.InitializeParams):
     ls.configure(getattr(params, "initialization_options", None))
+    ls.workspace_roots = _resolve_roots(params)
+
+
+@server.feature(t.INITIALIZED)
+def on_initialized(ls: MagmaLanguageServer, params: t.InitializedParams):
+    # Scan the project for sibling-defined symbols *after* the handshake so it never delays it.
+    ls.rescan_workspace()
 
 
 @server.feature(t.TEXT_DOCUMENT_DID_OPEN)
@@ -134,7 +175,28 @@ def did_change(ls: MagmaLanguageServer, params: t.DidChangeTextDocumentParams):
 
 @server.feature(t.TEXT_DOCUMENT_DID_SAVE)
 def did_save(ls: MagmaLanguageServer, params: t.DidSaveTextDocumentParams):
+    if params.text_document.uri.endswith((".m", ".magma")):
+        ls.rescan_workspace()  # a saved definition may now satisfy sibling calls
     _publish(ls, params.text_document.uri, run_magma=True)
+
+
+def _resolve_roots(params: t.InitializeParams) -> list[str]:
+    roots: list[str] = []
+    folders = getattr(params, "workspace_folders", None)
+    if folders:
+        for folder in folders:
+            path = to_fs_path(folder.uri)
+            if path:
+                roots.append(path)
+    root_uri = getattr(params, "root_uri", None)
+    if root_uri:
+        path = to_fs_path(root_uri)
+        if path and path not in roots:
+            roots.append(path)
+    env_root = os.environ.get("CLAUDE_PROJECT_DIR")
+    if env_root and env_root not in roots:
+        roots.append(env_root)
+    return roots
 
 
 @server.feature(t.TEXT_DOCUMENT_DID_CLOSE)
@@ -191,7 +253,7 @@ def _compute_diagnostics(
         # Static undefined-intrinsic check: the fast/offline complement to Magma's binding pass.
         # Skipped when the Magma pass ran above (it is authoritative for undefined names).
         if ls.enable_unknown_intrinsics and ls.intrinsic_names:
-            for lint in undefined_intrinsics(text, ls.intrinsic_names):
+            for lint in undefined_intrinsics(text, ls.known_call_names()):
                 diags.append(_lint_diagnostic(lint))
 
     if ls.enable_lints:

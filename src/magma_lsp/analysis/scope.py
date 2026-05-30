@@ -97,3 +97,35 @@ def analyze(source: bytes | str) -> tuple[set[str], list[CallSite]]:
         stack.extend(node.children)
 
     return available, calls
+
+
+def defined_symbols(source: bytes | str) -> set[str]:
+    """Names a file makes available to *other* files in the same project: named
+    function/procedure/intrinsic definitions, ``forward`` declarations, and assignment targets
+    (which cover ``F := function ...`` / ``F := func< ... >`` helpers). Deliberately generous —
+    used to suppress cross-file "undefined" false positives in multi-file packages.
+    """
+    data = source.encode("utf-8") if isinstance(source, str) else source
+    tree = new_parser().parse(data)
+
+    out: set[str] = set()
+    stack = [tree.root_node]
+    while stack:
+        node = stack.pop()
+        t = node.type
+        if t in ("function_definition", "procedure_definition", "intrinsic_definition"):
+            name = _named_def(node)
+            if name:
+                out.add(name)
+        elif t == "forward":
+            for c in node.children:
+                if c.type == "identifier":
+                    out.add(c.text.decode("utf-8", "replace"))
+        elif t == "assignment":
+            for c in node.children:
+                if c.type == ":=":
+                    break
+                if c.type == "identifier":
+                    out.add(c.text.decode("utf-8", "replace"))
+        stack.extend(node.children)
+    return out

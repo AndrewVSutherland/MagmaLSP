@@ -58,6 +58,24 @@ def test_unknown_intrinsic_on_fast_path():
     assert not any("not a known intrinsic" in d.message for d in clean)
 
 
+def test_workspace_scan_suppresses_cross_file_calls(tmp_path):
+    (tmp_path / "lib.m").write_text("function Helper(x) return x; end function;\n")
+    ls = srv.MagmaLanguageServer()
+    ls.magma_available = False
+    ls.enable_unknown_intrinsics = True
+    ls.intrinsic_names = frozenset({"EllipticCurve"})
+    caller = "z := Helper(3);\n"
+    # before scanning the project, the sibling-defined Helper looks undefined
+    before = srv._compute_diagnostics(ls, caller, run_magma=False)
+    assert any("Helper" in d.message for d in before)
+    # after scanning the workspace, it is known
+    ls.workspace_roots = [str(tmp_path)]
+    ls.rescan_workspace()
+    assert "Helper" in ls.known_call_names()
+    after = srv._compute_diagnostics(ls, caller, run_magma=False)
+    assert not any("Helper" in d.message for d in after)
+
+
 def test_tree_sitter_syntax_error_path():
     ls = srv.MagmaLanguageServer()
     ls.magma_available = False
