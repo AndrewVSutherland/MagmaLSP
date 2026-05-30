@@ -36,7 +36,8 @@ def _scan_one(path: str) -> dict:
         "exception": None,
     }
     try:
-        data = open(path, "rb").read()
+        with open(path, "rb") as fh:
+            data = fh.read()
         lang = Language(tsm.language())
         tree = Parser(lang).parse(data)
         rec["parse_error"] = tree.root_node.has_error
