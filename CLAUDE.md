@@ -149,6 +149,17 @@ every-keystroke, offline complement.
 **16,014 declarations**. See §6 for the full grammar. These are the **only** source for optional-parameter
 defaults and the canonical `{...}` doc strings, and a large idiomatic-Magma corpus.
 
+⚠️ **Only extract from files attached by the default spec.** A default Magma session loads just the
+**~3004 `.m` files reachable from `/opt/magma/package/spec`** — not all 3456. Files outside the spec
+(CompTree, `Classical/Bilinear.m`, `test/` files, …) declare `intrinsic`s that Magma **does not
+register**, so scanning every `.m` over-includes ~84 non-existent "intrinsics" (verified: lifts
+Magma-confirmation of DB names from 99.15% → 99.98%). Parse the spec tree to get the attached set
+(`db/spec.py`): grammar is `NAME { … }` (subdir), bare `{ … }` (an included spec's body),
+`+other.spec` / `+subdir/other.spec` (include — entries resolve relative to the **included spec
+file's own directory**), and `file.m`. Also **skip commented-out declarations** — `intrinsic // …`
+parses to an `intrinsic_definition` whose name child is a `comment`; require the name to be an
+`identifier`.
+
 ### 4c. `.sig` files — compiled signature index (text, alongside each `.m`)
 
 ~3004 text `.sig` files sit beside the `.m` files (e.g. `…/CrvEll/6and12descent.sig`). They are line records:
@@ -428,3 +439,25 @@ run on every edit and complement the dynamic Magma check (§5):
 
 ⚠️ Magma gotcha: **`_` is the discard placeholder** in multi-value assignment (`a, _ := Foo();`) — never warn
 on `_`. Honor `~ref` params and `where`/quantifier bindings per Magma scoping when deciding "used".
+
+---
+
+## 14. Validation harnesses & measured performance (this VM)
+
+Run-on-demand parallel validators live in `validation/` (use the 192 cores; need Magma + the package
+tree). They are how DB/extractor/diagnostics correctness is checked at scale, and they found the §4b
+spec-attachment and comment-skip bugs and the comprehension/for-loop binder scope bug.
+
+- `scan_corpus.py` — parse+extract all 3456 `.m`: **0 extractor crashes**, 0.2% tree-sitter parse
+  errors (all in giant data files / localized), ~12 s.
+- `validate_db.py` — probe every DB name against Magma (`name;`) to confirm it is a real intrinsic
+  (**99.98%**; the ~2 stragglers are guarded/non-loaded declarations).
+- `diff_diagnostics.py` — static unknown-intrinsic check vs Magma's binding pass over all **1018
+  handbook chapter programs**; after the binder fix, 7 residual "FPs" are all `Attach`/`load`-defined
+  example helpers (test-corpus artifacts, not check bugs).
+- `bench.py` — performance.
+
+**Measured perf (informs design.md §8 — no C hot path is warranted):** DB load **201 ms** (10,256
+names); hover **0.01 ms**, completion **0.94 ms**, static checks on an ~80-line file **0.2–0.7 ms**;
+Magma syntax check **~102 ms** (cold-start bound), **~548 checks/sec** across 64 workers. Full DB
+build (package extract + ListSignatures + variadic probe) **~40 s**.
