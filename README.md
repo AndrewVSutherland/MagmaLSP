@@ -16,6 +16,8 @@ Magma and the build environment.
   - `ListSignatures` in a running Magma → completeness, including kernel intrinsics;
   - a `name;` probe to recover variadic intrinsics (`Sprintf`, `Explode`) that `ListSignatures` omits.
   - Powers **hover**, **completion**, **signature help**, **go-to-definition**, and **workspace symbols**.
+  - **hover** is further enriched with the **handbook prose description** for the intrinsic, pulled from
+    the local HTML handbook (`doc/html`).
 - **Diagnostics** pushed to the editor after each edit:
   - **Magma-backed** syntax/binding check via a sandboxed, never-called-function wrap (CLAUDE.md §5) —
     the authoritative undefined-name check when Magma is available;

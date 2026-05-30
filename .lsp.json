@@ -11,7 +11,8 @@
       "magmaDiagnostics": true,
       "lints": true,
       "unknownIntrinsics": true,
-      "workspaceSymbols": true
+      "workspaceSymbols": true,
+      "handbook": true
     },
     "restartOnCrash": true,
     "maxRestarts": 5

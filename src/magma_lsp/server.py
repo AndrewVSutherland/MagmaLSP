@@ -27,6 +27,7 @@ from .analysis.workspace import scan_workspace
 from .db.index import SignatureIndex
 from .db.model import Signature
 from .db.store import newest_cached_db
+from .handbook import HandbookIndex
 from .magma.runner import find_magma
 from .magma.validate import syntax_check
 from .parsing import new_parser
@@ -52,6 +53,8 @@ class MagmaLanguageServer(LanguageServer):
         self.workspace_max_files: int = 2000
         self.workspace_roots: list[str] = []
         self.workspace_symbols: frozenset[str] = frozenset()
+        self.enable_handbook: bool = True
+        self.handbook: HandbookIndex | None = None
 
     def configure(self, init_options: dict | None) -> None:
         opts = init_options or {}
@@ -63,6 +66,15 @@ class MagmaLanguageServer(LanguageServer):
         self.workspace_max_files = int(opts.get("workspaceMaxFiles", 2000))
         self.magma_timeout = float(opts.get("magmaTimeout", 10.0))
         self.magma_available = find_magma(self.magma_path) is not None
+        self.enable_handbook = opts.get("handbook", True)
+        if self.enable_handbook:
+            hb_dir = opts.get("handbookDir") or _default_handbook_dir(self.magma_path)
+            if hb_dir and os.path.isdir(hb_dir):
+                try:
+                    self.handbook = HandbookIndex.load(hb_dir)
+                    logger.info("loaded handbook index (%d names)", len(self.handbook.entries))
+                except Exception as exc:
+                    logger.warning("failed to load handbook index: %s", exc)
 
         db_path = opts.get("dbPath") or newest_cached_db()
         if db_path:
@@ -199,6 +211,17 @@ def _resolve_roots(params: t.InitializeParams) -> list[str]:
     return roots
 
 
+def _default_handbook_dir(magma_path: str | None) -> str | None:
+    """Derive ``<install>/doc/html`` from the Magma wrapper location, else the known path."""
+    resolved = find_magma(magma_path)
+    if resolved:
+        install = os.path.dirname(os.path.realpath(resolved))
+        cand = os.path.join(install, "doc", "html")
+        if os.path.isdir(cand):
+            return cand
+    return "/opt/magma/doc/html"
+
+
 @server.feature(t.TEXT_DOCUMENT_DID_CLOSE)
 def did_close(ls: MagmaLanguageServer, params: t.DidCloseTextDocumentParams):
     ls.text_document_publish_diagnostics(
@@ -317,6 +340,10 @@ def hover(ls: MagmaLanguageServer, params: t.HoverParams) -> t.Hover | None:
     md = ls.index.hover_markdown(word)
     if not md:
         return None
+    if ls.handbook is not None:
+        prose = ls.handbook.doc_markdown(word)
+        if prose:
+            md = f"{md}\n\n---\n\n{prose}"
     return t.Hover(contents=t.MarkupContent(kind=t.MarkupKind.Markdown, value=md))
 
 
