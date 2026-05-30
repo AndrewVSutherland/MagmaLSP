@@ -1,0 +1,1082 @@
+[
+  {
+    "task_id": "amicable_count",
+    "condition": "closed",
+    "trial": 1,
+    "code": "SetColumns(0);\ncount := 0;\nfor n := 2 to 2000 do\n    m := SumOfDivisors(n) - n;\n    if m ne n and m ge 2 then\n        if SumOfDivisors(m) - m eq n then\n            count +:= 1;\n        end if;\n    end if;\nend for;\nprint count;\n"
+  },
+  {
+    "task_id": "amicable_count",
+    "condition": "lsp",
+    "trial": 1,
+    "code": "SetColumns(0);\nSetEchoInput(false);\n\ncount := 0;\nfor n := 2 to 2000 do\n    s := SumOfDivisors(n) - n;\n    if s gt 1 and s ne n then\n        t := SumOfDivisors(s) - s;\n        if t eq n then\n            count +:= 1;\n        end if;\n    end if;\nend for;\nprint count;\n"
+  },
+  {
+    "task_id": "amicable_count",
+    "condition": "closed",
+    "trial": 2,
+    "code": "SetColumns(0);\ncount := 0;\nfor n := 2 to 2000 do\n    m := SumOfDivisors(n) - n;\n    if m ne n and m ge 2 then\n        if SumOfDivisors(m) - m eq n then\n            count := count + 1;\n        end if;\n    end if;\nend for;\nprint count;\n"
+  },
+  {
+    "task_id": "amicable_count",
+    "condition": "lsp",
+    "trial": 2,
+    "code": "SetColumns(0);\nSetEchoInput(false);\n\ncount := 0;\nfor n := 2 to 2000 do\n    s := SumOfDivisors(n) - n;\n    if s gt 1 and s ne n then\n        t := SumOfDivisors(s) - s;\n        if t eq n then\n            count +:= 1;\n        end if;\n    end if;\nend for;\nprint count;\n"
+  },
+  {
+    "task_id": "amicable_count",
+    "condition": "closed",
+    "trial": 3,
+    "code": "SetColumns(0);\ncount := 0;\nfor n in [2..2000] do\n    m := SumOfDivisors(n) - n;\n    if m ne n and m gt 0 and SumOfDivisors(m) - m eq n then\n        count +:= 1;\n    end if;\nend for;\nprint count;\n"
+  },
+  {
+    "task_id": "amicable_count",
+    "condition": "lsp",
+    "trial": 3,
+    "code": "SetColumns(0);\nSetEchoInput(false);\n\ncount := 0;\nfor n := 2 to 2000 do\n    s := SumOfDivisors(n) - n;\n    if s gt 1 and s ne n then\n        t := SumOfDivisors(s) - s;\n        if t eq n then\n            count +:= 1;\n        end if;\n    end if;\nend for;\nprint count;\n"
+  },
+  {
+    "task_id": "resultant",
+    "condition": "closed",
+    "trial": 1,
+    "code": "Q := RationalField();\nR<x> := PolynomialRing(Q);\nf := x^4 - 1;\ng := x^3 + 2*x + 1;\nprint Resultant(f, g);\n"
+  },
+  {
+    "task_id": "resultant",
+    "condition": "lsp",
+    "trial": 1,
+    "code": "Q := RationalField();\nR<x> := PolynomialRing(Q);\nf := x^4 - 1;\ng := x^3 + 2*x + 1;\nprint Resultant(f, g);\n"
+  },
+  {
+    "task_id": "resultant",
+    "condition": "closed",
+    "trial": 2,
+    "code": "Q := RationalField();\nR<x> := PolynomialRing(Q);\nf := x^4 - 1;\ng := x^3 + 2*x + 1;\nprint Resultant(f, g);\n"
+  },
+  {
+    "task_id": "resultant",
+    "condition": "lsp",
+    "trial": 2,
+    "code": "Q := RationalField();\nR<x> := PolynomialRing(Q);\nf := x^4 - 1;\ng := x^3 + 2*x + 1;\nprint Resultant(f, g);\n"
+  },
+  {
+    "task_id": "resultant",
+    "condition": "closed",
+    "trial": 3,
+    "code": "Q := RationalField();\nR<x> := PolynomialRing(Q);\nf := x^4 - 1;\ng := x^3 + 2*x + 1;\nprint Resultant(f, g);\n"
+  },
+  {
+    "task_id": "resultant",
+    "condition": "lsp",
+    "trial": 3,
+    "code": "Q := RationalField();\nR<x> := PolynomialRing(Q);\nf := x^4 - 1;\ng := x^3 + 2*x + 1;\nprint Resultant(f, g);\n"
+  },
+  {
+    "task_id": "factors_x15",
+    "condition": "closed",
+    "trial": 1,
+    "code": "SetColumns(0);\nR<x> := PolynomialRing(Rationals());\nf := x^15 - 1;\nfacts := Factorization(f);\nprint #facts;\n"
+  },
+  {
+    "task_id": "factors_x15",
+    "condition": "lsp",
+    "trial": 1,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nQ := RationalField();\nR<x> := PolynomialRing(Q);\nf := x^15 - 1;\nfacs := Factorization(f);\nprint #facs;\n"
+  },
+  {
+    "task_id": "factors_x15",
+    "condition": "closed",
+    "trial": 2,
+    "code": "P<x> := PolynomialRing(Rationals());\nf := x^15 - 1;\nfacs := Factorization(f);\nprint #facs;\n"
+  },
+  {
+    "task_id": "factors_x15",
+    "condition": "lsp",
+    "trial": 2,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nQ := RationalField();\nR<x> := PolynomialRing(Q);\nf := x^15 - 1;\nfacs := Factorization(f);\nprint #facs;\n"
+  },
+  {
+    "task_id": "factors_x15",
+    "condition": "closed",
+    "trial": 3,
+    "code": "R<x> := PolynomialRing(Rationals());\nf := x^15 - 1;\nfactors := Factorization(f);\nprint #factors;\n"
+  },
+  {
+    "task_id": "factors_x15",
+    "condition": "lsp",
+    "trial": 3,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nQ := RationalField();\nR<x> := PolynomialRing(Q);\nf := x^15 - 1;\nfac := Factorization(f);\nprint #fac;\n"
+  },
+  {
+    "task_id": "mult_order",
+    "condition": "closed",
+    "trial": 1,
+    "code": "SetColumns(0);\np := 1000000007;\nF := GF(p);\nprintf \"%o\\n\", Order(F!2);"
+  },
+  {
+    "task_id": "mult_order",
+    "condition": "lsp",
+    "trial": 1,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nprint Order(2, 1000000007);\n"
+  },
+  {
+    "task_id": "mult_order",
+    "condition": "closed",
+    "trial": 2,
+    "code": "SetColumns(0);\np := 1000000007;\nZp := Integers(p);\nans := Order(Zp!2);\nprint ans;\n"
+  },
+  {
+    "task_id": "mult_order",
+    "condition": "lsp",
+    "trial": 2,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nprint Modorder(2, 1000000007);\n"
+  },
+  {
+    "task_id": "mult_order",
+    "condition": "closed",
+    "trial": 3,
+    "code": "SetColumns(0);\np := 1000000007;\nZ := IntegerRing(p);\nprint Order(Z!2);\n"
+  },
+  {
+    "task_id": "mult_order",
+    "condition": "lsp",
+    "trial": 3,
+    "code": "SetColumns(0);\np := 1000000007;\nR := IntegerRing(p);\nx := R!2;\nprint Order(x);\n"
+  },
+  {
+    "task_id": "bernoulli_digits",
+    "condition": "closed",
+    "trial": 1,
+    "code": "SetColumns(0);\nb := BernoulliNumber(10000);\nnum := Abs(Numerator(b));\nprint #IntegerToString(num);\n"
+  },
+  {
+    "task_id": "bernoulli_digits",
+    "condition": "lsp",
+    "trial": 1,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nb := BernoulliNumber(10000);\nn := Numerator(b);\nn := Abs(n);\ns := IntegerToString(n);\nprint #s;\n"
+  },
+  {
+    "task_id": "bernoulli_digits",
+    "condition": "closed",
+    "trial": 2,
+    "code": "SetColumns(0);\nb := BernoulliNumber(10000);\nnum := Abs(Numerator(b));\ns := IntegerToString(num);\nprint #s;\n"
+  },
+  {
+    "task_id": "bernoulli_digits",
+    "condition": "lsp",
+    "trial": 2,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nb := BernoulliNumber(10000);\nn := Abs(Numerator(b));\ns := IntegerToString(n);\nprint #s;\n"
+  },
+  {
+    "task_id": "bernoulli_digits",
+    "condition": "closed",
+    "trial": 3,
+    "code": "SetColumns(0);\nb := BernoulliNumber(10000);\nn := Abs(Numerator(b));\nprint #IntegerToString(n);\n"
+  },
+  {
+    "task_id": "bernoulli_digits",
+    "condition": "lsp",
+    "trial": 3,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nb := BernoulliNumber(10000);\nn := Abs(Numerator(b));\ns := IntegerToString(n);\nprint #s;\n"
+  },
+  {
+    "task_id": "splitting_degree",
+    "condition": "closed",
+    "trial": 1,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nQ := RationalField();\nR<x> := PolynomialRing(Q);\nf := x^3 - 2;\nK := SplittingField(f);\nprint Degree(K, Q);\n"
+  },
+  {
+    "task_id": "splitting_degree",
+    "condition": "lsp",
+    "trial": 1,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nQ := RationalField();\nR<x> := PolynomialRing(Q);\nf := x^3 - 2;\nK := SplittingField(f);\nprint Degree(K, Q);\n"
+  },
+  {
+    "task_id": "splitting_degree",
+    "condition": "closed",
+    "trial": 2,
+    "code": "SetColumns(0);\nR<x> := PolynomialRing(Rationals());\nf := x^3 - 2;\nK := SplittingField(f);\nprint Degree(K, Rationals());\n"
+  },
+  {
+    "task_id": "splitting_degree",
+    "condition": "lsp",
+    "trial": 2,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nQ := RationalField();\nR<x> := PolynomialRing(Q);\nf := x^3 - 2;\nK := SplittingField(f);\nprint Degree(K, Q);\n"
+  },
+  {
+    "task_id": "splitting_degree",
+    "condition": "closed",
+    "trial": 3,
+    "code": "SetColumns(0);\nP<x> := PolynomialRing(Rationals());\nf := x^3 - 2;\nK := SplittingField(f);\nprint Degree(K, Rationals());\n"
+  },
+  {
+    "task_id": "splitting_degree",
+    "condition": "lsp",
+    "trial": 3,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nQ := RationalField();\nR<x> := PolynomialRing(Q);\nf := x^3 - 2;\nK := SplittingField(f);\nprint Degree(K);\n"
+  },
+  {
+    "task_id": "galois_order",
+    "condition": "closed",
+    "trial": 1,
+    "code": "Q := RationalField();\nR<x> := PolynomialRing(Q);\nf := x^5 - 2;\nG, _, _ := GaloisGroup(f);\nprint Order(G);\n"
+  },
+  {
+    "task_id": "galois_order",
+    "condition": "lsp",
+    "trial": 1,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nQ := RationalField();\nR<x> := PolynomialRing(Q);\nf := x^5 - 2;\nG, _, _ := GaloisGroup(f);\nprint Order(G);\n"
+  },
+  {
+    "task_id": "galois_order",
+    "condition": "closed",
+    "trial": 2,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nSetIgnorePrompt(true);\nQ := RationalField();\nR<x> := PolynomialRing(Q);\nf := x^5 - 2;\nG := GaloisGroup(f);\nprint Order(G);\n"
+  },
+  {
+    "task_id": "galois_order",
+    "condition": "lsp",
+    "trial": 2,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nSetIgnorePrompt(true);\n\nR<x> := PolynomialRing(Rationals());\nf := x^5 - 2;\nG, _, _ := GaloisGroup(f);\nprint Order(G);\n"
+  },
+  {
+    "task_id": "galois_order",
+    "condition": "closed",
+    "trial": 3,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nQ := RationalField();\nR<x> := PolynomialRing(Q);\nf := x^5 - 2;\nG := GaloisGroup(f);\nprint Order(G);\n"
+  },
+  {
+    "task_id": "galois_order",
+    "condition": "lsp",
+    "trial": 3,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nSetIgnorePrompt(true);\n\nR<x> := PolynomialRing(Rationals());\nf := x^5 - 2;\nG, _, _ := GaloisGroup(f);\nprint Order(G);"
+  },
+  {
+    "task_id": "torsion_units",
+    "condition": "closed",
+    "trial": 1,
+    "code": "Q := RationalField();\nR<x> := PolynomialRing(Q);\nK := NumberField(x^4 + x^3 + x^2 + x + 1);\nprint NumberOfRootsOfUnity(K);\n"
+  },
+  {
+    "task_id": "torsion_units",
+    "condition": "lsp",
+    "trial": 1,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nSetIgnorePrompt(true);\nP<x> := PolynomialRing(Rationals());\nf := x^4 + x^3 + x^2 + x + 1;\nK := NumberField(f);\nT, m := TorsionUnitGroup(K);\nprint #T;\n"
+  },
+  {
+    "task_id": "torsion_units",
+    "condition": "closed",
+    "trial": 2,
+    "code": "K<x> := NumberField(Polynomial([1,1,1,1,1]));\nprint NumberOfRootsOfUnity(K);\n"
+  },
+  {
+    "task_id": "torsion_units",
+    "condition": "lsp",
+    "trial": 2,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nP<x> := PolynomialRing(Rationals());\nK := NumberField(x^4 + x^3 + x^2 + x + 1);\nT, _ := TorsionUnitGroup(K);\nprint #T;\n"
+  },
+  {
+    "task_id": "torsion_units",
+    "condition": "closed",
+    "trial": 3,
+    "code": "K<x> := NumberField(Polynomial([1,1,1,1,1]));\nprint NumberOfRootsOfUnity(K);\n"
+  },
+  {
+    "task_id": "torsion_units",
+    "condition": "lsp",
+    "trial": 3,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nSetIgnorePrompt(true);\n\nR<x> := PolynomialRing(Rationals());\nK := NumberField(x^4 + x^3 + x^2 + x + 1);\nT, _ := TorsionUnitGroup(K);\nprint #T;\n"
+  },
+  {
+    "task_id": "s4_normal",
+    "condition": "closed",
+    "trial": 1,
+    "code": "G := Sym(4);\nns := NormalSubgroups(G);\nprint #ns;\n"
+  },
+  {
+    "task_id": "s4_normal",
+    "condition": "lsp",
+    "trial": 1,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nG := Sym(4);\nnorms := NormalSubgroups(G);\nprint #norms;\n"
+  },
+  {
+    "task_id": "s4_normal",
+    "condition": "closed",
+    "trial": 2,
+    "code": "G := Sym(4);\nnormals := NormalSubgroups(G);\nprint #normals;\n"
+  },
+  {
+    "task_id": "s4_normal",
+    "condition": "lsp",
+    "trial": 2,
+    "code": "SetColumns(0);\nG := Sym(4);\nN := NormalSubgroups(G);\nprint #N;\n"
+  },
+  {
+    "task_id": "s4_normal",
+    "condition": "closed",
+    "trial": 3,
+    "code": "G := Sym(4);\nns := NormalSubgroups(G);\nprint #ns;\n"
+  },
+  {
+    "task_id": "s4_normal",
+    "condition": "lsp",
+    "trial": 3,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nG := Sym(4);\nnorms := NormalSubgroups(G);\nprint #norms;\n"
+  },
+  {
+    "task_id": "sylow2_s8",
+    "condition": "closed",
+    "trial": 1,
+    "code": "SetColumns(0);\nG := Sym(8);\nP := SylowSubgroup(G, 2);\nprint Order(P);\n"
+  },
+  {
+    "task_id": "sylow2_s8",
+    "condition": "lsp",
+    "trial": 1,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nG := SymmetricGroup(8);\nP := SylowSubgroup(G, 2);\nprint Order(P);\n"
+  },
+  {
+    "task_id": "sylow2_s8",
+    "condition": "closed",
+    "trial": 2,
+    "code": "SetColumns(0);\nG := Sym(8);\np := 2;\nS := SylowSubgroup(G, p);\nprint Order(S);\n"
+  },
+  {
+    "task_id": "sylow2_s8",
+    "condition": "lsp",
+    "trial": 2,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nS8 := SymmetricGroup(8);\nP := SylowSubgroup(S8, 2);\nprint Order(P);\n"
+  },
+  {
+    "task_id": "sylow2_s8",
+    "condition": "closed",
+    "trial": 3,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nG := Sym(8);\nP := SylowSubgroup(G, 2);\nprint Order(P);\n"
+  },
+  {
+    "task_id": "sylow2_s8",
+    "condition": "lsp",
+    "trial": 3,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nG := SymmetricGroup(8);\nP := SylowSubgroup(G, 2);\nprint Order(P);\n"
+  },
+  {
+    "task_id": "aut_d12",
+    "condition": "closed",
+    "trial": 1,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nG := DihedralGroup(6);\nA := AutomorphismGroup(G);\nprint #A;\n"
+  },
+  {
+    "task_id": "aut_d12",
+    "condition": "lsp",
+    "trial": 1,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nG := DihedralGroup(6);\nA := AutomorphismGroup(G);\nprint Order(A);\n"
+  },
+  {
+    "task_id": "aut_d12",
+    "condition": "closed",
+    "trial": 2,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nG := DihedralGroup(6);\nA := AutomorphismGroup(G);\nprint #A;\n"
+  },
+  {
+    "task_id": "aut_d12",
+    "condition": "lsp",
+    "trial": 2,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nG := DihedralGroup(6);\nA := AutomorphismGroup(G);\nprint #A;"
+  },
+  {
+    "task_id": "aut_d12",
+    "condition": "closed",
+    "trial": 3,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nG := DihedralGroup(6);\nA := AutomorphismGroup(G);\nprint Order(A);\n"
+  },
+  {
+    "task_id": "aut_d12",
+    "condition": "lsp",
+    "trial": 3,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nG := DihedralGroup(GrpPC, 6);\nA := AutomorphismGroup(G);\nprint #A;\n"
+  },
+  {
+    "task_id": "matrix_order_ff",
+    "condition": "closed",
+    "trial": 1,
+    "code": "SetColumns(0);\nG := GL(2, GF(5));\nM := G ! [[1,1],[0,1]];\nprint Order(M);\n"
+  },
+  {
+    "task_id": "matrix_order_ff",
+    "condition": "lsp",
+    "trial": 1,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nSetIgnorePrompt(true);\nG := GL(2, GF(5));\nM := G ! Matrix(GF(5), 2, 2, [1,1,0,1]);\nprint Order(M);\n"
+  },
+  {
+    "task_id": "matrix_order_ff",
+    "condition": "closed",
+    "trial": 2,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nG := GL(2, GF(5));\nM := G ! [1,1,0,1];\nprint Order(M);\n"
+  },
+  {
+    "task_id": "matrix_order_ff",
+    "condition": "lsp",
+    "trial": 2,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nG := GL(2, GF(5));\nM := G ! [[1,1],[0,1]];\nprint Order(M);\n"
+  },
+  {
+    "task_id": "matrix_order_ff",
+    "condition": "closed",
+    "trial": 3,
+    "code": "SetColumns(0);\nG := GL(2, GF(5));\nM := G ! [1,1, 0,1];\nprint Order(M);\n"
+  },
+  {
+    "task_id": "matrix_order_ff",
+    "condition": "lsp",
+    "trial": 3,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nG := GL(2, GF(5));\nM := G ! Matrix(GF(5), 2, 2, [1,1,0,1]);\nprint Order(M);\n"
+  },
+  {
+    "task_id": "smith_largest",
+    "condition": "closed",
+    "trial": 1,
+    "code": "SetColumns(0);\nM := Matrix(Integers(), 3, 3, [2, 4, 4, -6, 6, 12, 10, -4, -16]);\nS := SmithForm(M);\nprint S[3,3];\n"
+  },
+  {
+    "task_id": "smith_largest",
+    "condition": "lsp",
+    "trial": 1,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nM := Matrix(Integers(), 3, 3, [2,4,4,-6,6,12,10,-4,-16]);\nS := SmithForm(M);\nn := NumberOfRows(S);\nprint S[n,n];\n"
+  },
+  {
+    "task_id": "smith_largest",
+    "condition": "closed",
+    "trial": 2,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nM := Matrix(Integers(), 3, 3, [2,4,4,-6,6,12,10,-4,-16]);\nS := SmithForm(M);\nprint S[3,3];\n"
+  },
+  {
+    "task_id": "smith_largest",
+    "condition": "lsp",
+    "trial": 2,
+    "code": "SetColumns(0);\nM := Matrix(IntegerRing(), 3, 3, [2,4,4,-6,6,12,10,-4,-16]);\nD := ElementaryDivisors(M);\nprint D[#D];\n"
+  },
+  {
+    "task_id": "smith_largest",
+    "condition": "closed",
+    "trial": 3,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nM := Matrix(Integers(), 3, 3, [2,4,4,-6,6,12,10,-4,-16]);\nS := SmithForm(M);\nprint S[3,3];\n"
+  },
+  {
+    "task_id": "smith_largest",
+    "condition": "lsp",
+    "trial": 3,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nM := Matrix(IntegerRing(), 3, 3, [2,4,4, -6,6,12, 10,-4,-16]);\nS := SmithForm(M);\ndiag := [S[i,i] : i in [1..3]];\nprint diag[3];\n"
+  },
+  {
+    "task_id": "petersen_chromatic",
+    "condition": "closed",
+    "trial": 1,
+    "code": "SetColumns(0);\nG := PetersenGraph();\nprint ChromaticNumber(G);\n"
+  },
+  {
+    "task_id": "petersen_chromatic",
+    "condition": "lsp",
+    "trial": 1,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nG := OddGraph(3);\nprint ChromaticNumber(G);"
+  },
+  {
+    "task_id": "petersen_chromatic",
+    "condition": "closed",
+    "trial": 2,
+    "code": "SetColumns(0);\nG := PetersenGraph();\nPrint(ChromaticNumber(G));\n"
+  },
+  {
+    "task_id": "petersen_chromatic",
+    "condition": "lsp",
+    "trial": 2,
+    "code": "SetColumns(0);\nSetEchoInput(false);\n\n// Build the Petersen graph (10 vertices, 15 edges)\n// Outer pentagon: 1-2-3-4-5-1\n// Inner pentagram: 6-8-10-7-9-6\n// Spokes: 1-6, 2-7, 3-8, 4-9, 5-10\n\nG := EmptyGraph(10);\n// Outer cycle\nAddEdge(~G, 1, 2);\nAddEdge(~G, 2, 3);\nAddEdge(~G, 3, 4);\nAddEdge(~G, 4, 5);\nAddEdge(~G, 5, 1);\n// Inner pentagram (skip-one connections)\nAddEdge(~G, 6, 8);\nAddEdge(~G, 8, 10);\nAddEdge(~G, 10, 7);\nAddEdge(~G, 7, 9);\nAddEdge(~G, 9, 6);\n// Spokes\nAddEdge(~G, 1, 6);\nAddEdge(~G, 2, 7);\nAddEdge(~G, 3, 8);\nAddEdge(~G, 4, 9);\nAddEdge(~G, 5, 10);\n\nprint ChromaticNumber(G);\n"
+  },
+  {
+    "task_id": "petersen_chromatic",
+    "condition": "closed",
+    "trial": 3,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nSetIgnorePrompt(true);\nG := PetersenGraph();\nprint ChromaticNumber(G);\n"
+  },
+  {
+    "task_id": "petersen_chromatic",
+    "condition": "lsp",
+    "trial": 3,
+    "code": "SetColumns(0);\nSetEchoInput(false);\n\n// Build the Petersen graph (10 vertices, 15 edges)\n// Outer pentagon: 1-2-3-4-5-1\n// Inner pentagram: 6-8-10-7-9-6\n// Spokes: 1-6, 2-7, 3-8, 4-9, 5-10\n\nG := EmptyGraph(10);\n// Outer cycle\nAddEdge(~G, 1, 2);\nAddEdge(~G, 2, 3);\nAddEdge(~G, 3, 4);\nAddEdge(~G, 4, 5);\nAddEdge(~G, 5, 1);\n// Inner pentagram (skip-one connections)\nAddEdge(~G, 6, 8);\nAddEdge(~G, 8, 10);\nAddEdge(~G, 10, 7);\nAddEdge(~G, 7, 9);\nAddEdge(~G, 9, 6);\n// Spokes\nAddEdge(~G, 1, 6);\nAddEdge(~G, 2, 7);\nAddEdge(~G, 3, 8);\nAddEdge(~G, 4, 9);\nAddEdge(~G, 5, 10);\n\nprint ChromaticNumber(G);\n"
+  },
+  {
+    "task_id": "petersen_auto",
+    "condition": "closed",
+    "trial": 1,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nG := PetersenGraph();\nA := AutomorphismGroup(G);\nprint #A;\n"
+  },
+  {
+    "task_id": "petersen_auto",
+    "condition": "lsp",
+    "trial": 1,
+    "code": "// Petersen graph: 10 vertices, 15 edges\n// Outer cycle: 1-2-3-4-5-1\n// Spokes: 1-6, 2-7, 3-8, 4-9, 5-10\n// Inner pentagram: 6-8, 8-10, 10-7, 7-9, 9-6\nSetColumns(0);\nE := {{1,2},{2,3},{3,4},{4,5},{5,1},\n      {1,6},{2,7},{3,8},{4,9},{5,10},\n      {6,8},{8,10},{10,7},{7,9},{9,6}};\nG := Graph< 10 | E >;\nA := AutomorphismGroup(G);\nprint #A;\n"
+  },
+  {
+    "task_id": "petersen_auto",
+    "condition": "closed",
+    "trial": 2,
+    "code": "SetColumns(0);\nG := Graph< 10 | {1,2},{1,5},{1,6},{2,3},{2,7},{3,4},{3,8},{4,5},{4,9},{5,10},{6,8},{6,9},{7,9},{7,10},{8,10} >;\nA := AutomorphismGroup(G);\nprint #A;\n"
+  },
+  {
+    "task_id": "petersen_auto",
+    "condition": "lsp",
+    "trial": 2,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nP := Graph< 10 | { 1, 2 }, { 1, 5 }, { 1, 6 }, { 2, 3 }, { 2, 7 },\n           { 3, 4 }, { 3, 8 }, { 4, 5 }, { 4, 9 }, { 5, 10 },\n           { 6, 8 }, { 6, 9 }, { 7, 9 }, { 7, 10 }, { 8, 10 } >;\nA := AutomorphismGroup(P);\nprint #A;\n"
+  },
+  {
+    "task_id": "petersen_auto",
+    "condition": "closed",
+    "trial": 3,
+    "code": "SetColumns(0);\nG := PetersenGraph();\nA := AutomorphismGroup(G);\nprint Order(A);\n"
+  },
+  {
+    "task_id": "petersen_auto",
+    "condition": "lsp",
+    "trial": 3,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nP := Graph< 10 | { 1, 2 }, { 1, 5 }, { 1, 6 }, { 2, 3 }, { 2, 7 },\n           { 3, 4 }, { 3, 8 }, { 4, 5 }, { 4, 9 }, { 5, 10 },\n           { 6, 8 }, { 6, 9 }, { 7, 9 }, { 7, 10 }, { 8, 10 } >;\nA := AutomorphismGroup(P);\nprint #A;\n"
+  },
+  {
+    "task_id": "e8_aut_order",
+    "condition": "closed",
+    "trial": 1,
+    "code": "SetColumns(0);\nL := Lattice(\"E\", 8);\nA := AutomorphismGroup(L);\nprint #A;\n"
+  },
+  {
+    "task_id": "e8_aut_order",
+    "condition": "lsp",
+    "trial": 1,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nSetIgnorePrompt(true);\nL := Lattice(\"E8\", 8);\nA := AutomorphismGroup(L);\nprint Order(A);\n"
+  },
+  {
+    "task_id": "e8_aut_order",
+    "condition": "closed",
+    "trial": 2,
+    "code": "SetColumns(0);\nL := Lattice(\"E\", 8);\nA := AutomorphismGroup(L);\nprint #A;\n"
+  },
+  {
+    "task_id": "e8_aut_order",
+    "condition": "lsp",
+    "trial": 2,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nSetIgnorePrompt(true);\nL := Lattice(\"E\", 8);\nA := AutomorphismGroup(L);\nprint Order(A);\n"
+  },
+  {
+    "task_id": "e8_aut_order",
+    "condition": "closed",
+    "trial": 3,
+    "code": "SetColumns(0);\nL := Lattice(\"E\", 8);\nA := AutomorphismGroup(L);\nprint #A;\n"
+  },
+  {
+    "task_id": "e8_aut_order",
+    "condition": "lsp",
+    "trial": 3,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nSetIgnorePrompt(true);\nL := Lattice(\"E\", 8);\nA := AutomorphismGroup(L);\nprint Order(A);\n"
+  },
+  {
+    "task_id": "e8_kissing",
+    "condition": "closed",
+    "trial": 1,
+    "code": "L := Lattice(\"E\", 8);\nprint #MinimalVectors(L);\n"
+  },
+  {
+    "task_id": "e8_kissing",
+    "condition": "lsp",
+    "trial": 1,
+    "code": "SetColumns(0);\nSetEchoInput(false);\n// E8 root lattice via its Gram matrix (standard Cartan matrix form)\nG := Matrix(IntegerRing(), 8, 8, [\n     2, -1,  0,  0,  0,  0,  0,  0,\n    -1,  2, -1,  0,  0,  0,  0,  0,\n     0, -1,  2, -1,  0,  0,  0, -1,\n     0,  0, -1,  2, -1,  0,  0,  0,\n     0,  0,  0, -1,  2, -1,  0,  0,\n     0,  0,  0,  0, -1,  2, -1,  0,\n     0,  0,  0,  0,  0, -1,  2,  0,\n     0,  0, -1,  0,  0,  0,  0,  2\n]);\nL := LatticeWithGram(G);\n// ShortestVectors returns one per antipodal pair; kissing number includes both +v and -v\nsv := ShortestVectors(L);\nprint 2 * #sv;\n"
+  },
+  {
+    "task_id": "e8_kissing",
+    "condition": "closed",
+    "trial": 2,
+    "code": "L := Lattice(\"E\", 8);\nprint #MinimalVectors(L);\n"
+  },
+  {
+    "task_id": "e8_kissing",
+    "condition": "lsp",
+    "trial": 2,
+    "code": "SetColumns(0);\nSetEchoInput(false);\n// E8 root lattice via its Gram matrix (standard Cartan matrix form)\nG := Matrix(IntegerRing(), 8, 8, [\n     2, -1,  0,  0,  0,  0,  0,  0,\n    -1,  2, -1,  0,  0,  0,  0,  0,\n     0, -1,  2, -1,  0,  0,  0, -1,\n     0,  0, -1,  2, -1,  0,  0,  0,\n     0,  0,  0, -1,  2, -1,  0,  0,\n     0,  0,  0,  0, -1,  2, -1,  0,\n     0,  0,  0,  0,  0, -1,  2,  0,\n     0,  0, -1,  0,  0,  0,  0,  2\n]);\nL := LatticeWithGram(G);\n// ShortestVectors returns one per antipodal pair; kissing number includes both +v and -v\nsv := ShortestVectors(L);\nprint 2 * #sv;"
+  },
+  {
+    "task_id": "e8_kissing",
+    "condition": "closed",
+    "trial": 3,
+    "code": "L := Lattice(\"E\", 8);\nprint #MinimalVectors(L);\n"
+  },
+  {
+    "task_id": "e8_kissing",
+    "condition": "lsp",
+    "trial": 3,
+    "code": "SetColumns(0);\nSetEchoInput(false);\n\n// E8 root lattice: all roots have squared norm 2\n// The kissing number = total number of roots = 2 * NumberOfPositiveRoots\nR := RootDatum(\"E8\");\nnpos := NumberOfPositiveRoots(R);\nprint 2 * npos;\n"
+  },
+  {
+    "task_id": "hamming_mindist",
+    "condition": "closed",
+    "trial": 1,
+    "code": "SetColumns(0);\nC := HammingCode(GF(2), 3);\nprintf \"%o\\n\", MinimumDistance(C);\n"
+  },
+  {
+    "task_id": "hamming_mindist",
+    "condition": "lsp",
+    "trial": 1,
+    "code": "C := HammingCode(GF(2), 3);\nprint MinimumDistance(C);\n"
+  },
+  {
+    "task_id": "hamming_mindist",
+    "condition": "closed",
+    "trial": 2,
+    "code": "SetColumns(0);\nC := HammingCode(GF(2), 3);\nprint MinimumDistance(C);\n"
+  },
+  {
+    "task_id": "hamming_mindist",
+    "condition": "lsp",
+    "trial": 2,
+    "code": "C := HammingCode(GF(2), 3);\nprint MinimumDistance(C);\n"
+  },
+  {
+    "task_id": "hamming_mindist",
+    "condition": "closed",
+    "trial": 3,
+    "code": "C := HammingCode(GF(2), 3);\nprintf \"%o\\n\", MinimumDistance(C);\n"
+  },
+  {
+    "task_id": "hamming_mindist",
+    "condition": "lsp",
+    "trial": 3,
+    "code": "C := HammingCode(GF(2), 3);\nprint MinimumDistance(C);\n"
+  },
+  {
+    "task_id": "golay_mindist",
+    "condition": "closed",
+    "trial": 1,
+    "code": "SetColumns(0);\nC := BinaryGolayCode();\nprint MinimumDistance(C);\n"
+  },
+  {
+    "task_id": "golay_mindist",
+    "condition": "lsp",
+    "trial": 1,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nC := GolayCode(GF(2), false);\nprint MinimumDistance(C);\n"
+  },
+  {
+    "task_id": "golay_mindist",
+    "condition": "closed",
+    "trial": 2,
+    "code": "SetColumns(0);\nC := GolayCode(GF(2), false);\nPrint(MinimumDistance(C));\n"
+  },
+  {
+    "task_id": "golay_mindist",
+    "condition": "lsp",
+    "trial": 2,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nC := GolayCode(GF(2), false);\nprint MinimumDistance(C);\n"
+  },
+  {
+    "task_id": "golay_mindist",
+    "condition": "closed",
+    "trial": 3,
+    "code": "C := BinaryGolayCode();\nprint MinimumDistance(C);\n"
+  },
+  {
+    "task_id": "golay_mindist",
+    "condition": "lsp",
+    "trial": 3,
+    "code": "SetColumns(0);\nC := GolayCode(GF(2), false);\nprint MinimumDistance(C);\n"
+  },
+  {
+    "task_id": "variety_size",
+    "condition": "closed",
+    "trial": 1,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nSetIgnorePrompt(true);\n\nP<x,y,z> := PolynomialRing(RationalField(), 3);\nI := ideal<P | x + y + z, x*y + y*z + z*x, x*y*z - 1>;\nV := Variety(I, AlgebraicClosure(RationalField()));\nprint #V;\n"
+  },
+  {
+    "task_id": "variety_size",
+    "condition": "lsp",
+    "trial": 1,
+    "code": "SetColumns(0);\nSetEchoInput(false);\n\n// Count ordered triples (x,y,z) in Qbar^3 satisfying:\n//   x + y + z = 0  (e1 = 0)\n//   x*y + y*z + z*x = 0  (e2 = 0)\n//   x*y*z = 1  (e3 = 1)\n//\n// By Vieta, x,y,z are roots of t^3 - e1*t^2 + e2*t - e3 = t^3 - 1.\n// Verify via Groebner elimination: the z-coordinate satisfies t^3 - 1 = 0.\n// t^3 - 1 has discriminant -27 != 0, so 3 distinct roots over Qbar.\n// Each of the 3! permutations of these distinct roots is an ordered solution.\n\nR<x,y,z> := PolynomialRing(Rationals(), 3, \"lex\");\nI := ideal<R | x+y+z, x*y+y*z+z*x, x*y*z-1>;\nI1 := EliminationIdeal(I, 2);  // keep only z\ngb := GroebnerBasis(I1);       // univariate polynomial in z\n\n// Extract as univariate poly (gb[1] is in Q[z])\nQz<t> := PolynomialRing(Rationals());\n// Evaluate coefficients by substituting z=t in gb[1]\nh := gb[1];\ndeg := TotalDegree(h);   // should be 3\n\n// The 3 roots of t^3-1 are distinct (discriminant != 0),\n// and each ordered permutation gives one solution.\nprint Factorial(deg);\n"
+  },
+  {
+    "task_id": "variety_size",
+    "condition": "closed",
+    "trial": 2,
+    "code": "SetColumns(0);\nP<x,y,z> := PolynomialRing(RationalField(), 3);\nI := ideal<P | x + y + z, x*y + y*z + z*x, x*y*z - 1>;\nV := Variety(I, AlgebraicClosure(RationalField()));\nprint #V;\n"
+  },
+  {
+    "task_id": "variety_size",
+    "condition": "lsp",
+    "trial": 2,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nSetIgnorePrompt(true);\n\nQ := RationalField();\nP<x,y,z> := PolynomialRing(Q, 3);\n\nf1 := x + y + z;\nf2 := x*y + y*z + z*x;\nf3 := x*y*z - 1;\n\nI := ideal<P | f1, f2, f3>;\nQ_ring := quo<P | I>;\nprint Dimension(Q_ring);\n"
+  },
+  {
+    "task_id": "variety_size",
+    "condition": "closed",
+    "trial": 3,
+    "code": "P<x,y,z> := PolynomialRing(RationalField(), 3);\nI := ideal<P | x + y + z, x*y + y*z + z*x, x*y*z - 1>;\nG := GroebnerBasis(I);\nprint Degree(I);\n"
+  },
+  {
+    "task_id": "variety_size",
+    "condition": "lsp",
+    "trial": 3,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nSetIgnorePrompt(true);\n\n// System: x+y+z=0, xy+yz+zx=0, xyz=1\n// The elementary symmetric polynomials e1=0, e2=0, e3=1\n// So x,y,z are roots of t^3 - 0*t^2 + 0*t - 1 = t^3 - 1 = 0\n// We need to count ordered triples (x,y,z) over algebraic closure of Q\n\n// Set up polynomial ring over Q\nR<x,y,z> := PolynomialRing(RationalField(), 3);\n\n// Define the ideal\nI := ideal<R | x+y+z, x*y+y*z+z*x, x*y*z-1>;\n\n// Compute variety over algebraic closure\n// The dimension should be 0 (finite solutions)\n// Use Variety over a splitting field, or count via degree\n\n// QuotientDimension of P/I = number of solutions over algebraic closure (with multiplicity)\nd := QuotientDimension(I);\nprint d;\n"
+  },
+  {
+    "task_id": "amicable_count",
+    "condition": "raw",
+    "trial": 1,
+    "code": "SetColumns(0);\nSetEchoInput(false);\n\nfunction SumProperDivisors(n)\n    s := 1;\n    for i := 2 to Isqrt(n) do\n        if n mod i eq 0 then\n            s +:= i;\n            if i ne n div i then\n                s +:= n div i;\n            end if;\n        end if;\n    end for;\n    if n eq 1 then return 0; end if;\n    return s;\nend function;\n\ncount := 0;\nfor n := 2 to 2000 do\n    m := SumProperDivisors(n);\n    if m ne n and m ge 2 then\n        if SumProperDivisors(m) eq n then\n            count +:= 1;\n        end if;\n    end if;\nend for;\n\nprint count;\n"
+  },
+  {
+    "task_id": "amicable_count",
+    "condition": "raw",
+    "trial": 2,
+    "code": "SetColumns(0);\nSetEchoInput(false);\n\nfunction SumDivisors(n)\n    s := 0;\n    for d in Divisors(n) do\n        if d lt n then\n            s +:= d;\n        end if;\n    end for;\n    return s;\nend function;\n\ncount := 0;\nfor n := 2 to 2000 do\n    m := SumDivisors(n);\n    if m ne n and m ge 2 then\n        if SumDivisors(m) eq n then\n            count +:= 1;\n        end if;\n    end if;\nend for;\n\nprint count;"
+  },
+  {
+    "task_id": "amicable_count",
+    "condition": "raw",
+    "trial": 3,
+    "code": "SetColumns(0);\nSetEchoInput(false);\n\nfunction SumDivisors(n)\n    s := 0;\n    for d := 1 to n-1 do\n        if n mod d eq 0 then\n            s := s + d;\n        end if;\n    end for;\n    return s;\nend function;\n\ncount := 0;\nfor n := 2 to 2000 do\n    m := SumDivisors(n);\n    if m ne n and m ge 2 then\n        if SumDivisors(m) eq n then\n            count := count + 1;\n        end if;\n    end if;\nend for;\n\nprint count;\n"
+  },
+  {
+    "task_id": "resultant",
+    "condition": "raw",
+    "trial": 1,
+    "code": "SetColumns(0);\nQ := RationalField();\nR<x> := PolynomialRing(Q);\nf := x^4 - 1;\ng := x^3 + 2*x + 1;\nres := Resultant(f, g);\nprint res;\n"
+  },
+  {
+    "task_id": "resultant",
+    "condition": "raw",
+    "trial": 2,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nQ := RationalField();\nR<x> := PolynomialRing(Q);\nf := x^4 - 1;\ng := x^3 + 2*x + 1;\nres := Resultant(f, g);\nprint res;\n"
+  },
+  {
+    "task_id": "resultant",
+    "condition": "raw",
+    "trial": 3,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nQ := RationalField();\nR<x> := PolynomialRing(Q);\nf := x^4 - 1;\ng := x^3 + 2*x + 1;\nr := Resultant(f, g);\nprint r;"
+  },
+  {
+    "task_id": "factors_x15",
+    "condition": "raw",
+    "trial": 1,
+    "code": "SetColumns(0);\nR<x> := PolynomialRing(Rationals());\nf := x^15 - 1;\nfactors := Factorization(f);\nprint #factors;"
+  },
+  {
+    "task_id": "factors_x15",
+    "condition": "raw",
+    "trial": 2,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nQ := RationalField();\nR<x> := PolynomialRing(Q);\nf := x^15 - 1;\nfactors := Factorization(f);\nprint #factors;\n"
+  },
+  {
+    "task_id": "factors_x15",
+    "condition": "raw",
+    "trial": 3,
+    "code": "SetColumns(0);\nR<x> := PolynomialRing(Rationals());\nf := x^15 - 1;\nfactors := Factorization(f);\nprint #factors;\n"
+  },
+  {
+    "task_id": "mult_order",
+    "condition": "raw",
+    "trial": 1,
+    "code": "SetColumns(0);\np := 1000000007;\nF := GF(p);\na := F!2;\nord := Order(a);\nprint ord;\n"
+  },
+  {
+    "task_id": "mult_order",
+    "condition": "raw",
+    "trial": 2,
+    "code": "SetColumns(0);\np := 1000000007;\nF := GF(p);\na := F!2;\nprint Order(a);"
+  },
+  {
+    "task_id": "mult_order",
+    "condition": "raw",
+    "trial": 3,
+    "code": "SetColumns(0);\np := 1000000007;\nF := GF(p);\na := F!2;\nord := Order(a);\nprint ord;\n"
+  },
+  {
+    "task_id": "bernoulli_digits",
+    "condition": "raw",
+    "trial": 1,
+    "code": "SetColumns(0);\nb := BernoulliNumber(10000);\nn := Numerator(b);\nn := Abs(n);\nprint #IntegerToString(n);\n"
+  },
+  {
+    "task_id": "bernoulli_digits",
+    "condition": "raw",
+    "trial": 2,
+    "code": "SetColumns(0);\nb := BernoulliNumber(10000);\nn := Numerator(b);\nn := Abs(n);\ndigits := #IntegerToString(n);\nprint digits;\n"
+  },
+  {
+    "task_id": "bernoulli_digits",
+    "condition": "raw",
+    "trial": 3,
+    "code": "SetColumns(0);\nb := BernoulliNumber(10000);\nn := Numerator(b);\nn := Abs(n);\ndigits := #IntegerToString(n);\nprint digits;\n"
+  },
+  {
+    "task_id": "splitting_degree",
+    "condition": "raw",
+    "trial": 1,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nQ := RationalField();\nR<x> := PolynomialRing(Q);\nf := x^3 - 2;\nK := SplittingField(f);\nprint Degree(K, Q);"
+  },
+  {
+    "task_id": "splitting_degree",
+    "condition": "raw",
+    "trial": 2,
+    "code": "SetColumns(0);\nSetEchoInput(false);\n\nQ := RationalField();\nR<x> := PolynomialRing(Q);\nf := x^3 - 2;\n\nK := SplittingField(f);\nprint Degree(K, Q);\n"
+  },
+  {
+    "task_id": "splitting_degree",
+    "condition": "raw",
+    "trial": 3,
+    "code": "SetColumns(0);\nSetEchoInput(false);\n\nQ := RationalField();\nR<x> := PolynomialRing(Q);\nf := x^3 - 2;\n\nK := SplittingField(f);\nprint Degree(K, Q);\n"
+  },
+  {
+    "task_id": "galois_order",
+    "condition": "raw",
+    "trial": 1,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nQ := RationalField();\nP<x> := PolynomialRing(Q);\nf := x^5 - 2;\nG := GaloisGroup(f);\nprint Order(G);\n"
+  },
+  {
+    "task_id": "galois_order",
+    "condition": "raw",
+    "trial": 2,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nQ := RationalField();\nR<x> := PolynomialRing(Q);\nf := x^5 - 2;\nG, _, _ := GaloisGroup(f);\nprint Order(G);"
+  },
+  {
+    "task_id": "galois_order",
+    "condition": "raw",
+    "trial": 3,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nQ := RationalField();\nP<x> := PolynomialRing(Q);\nf := x^5 - 2;\nG, _, _ := GaloisGroup(f);\nprint Order(G);\n"
+  },
+  {
+    "task_id": "torsion_units",
+    "condition": "raw",
+    "trial": 1,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nSetIgnorePrompt(true);\n\nR<x> := PolynomialRing(Rationals());\nf := x^4 + x^3 + x^2 + x + 1;\nK<a> := NumberField(f);\nU, mU := UnitGroup(K);\ntor := TorsionSubgroup(U);\nprint #tor;\n"
+  },
+  {
+    "task_id": "torsion_units",
+    "condition": "raw",
+    "trial": 2,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nSetIgnorePrompt(true);\n\nR<x> := PolynomialRing(Rationals());\nf := x^4 + x^3 + x^2 + x + 1;\nK<a> := NumberField(f);\nOK := RingOfIntegers(K);\nU, phi := UnitGroup(OK);\ntors := TorsionSubgroup(U);\nprint #tors;"
+  },
+  {
+    "task_id": "torsion_units",
+    "condition": "raw",
+    "trial": 3,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nSetIgnorePrompt(true);\n\nR<x> := PolynomialRing(Rationals());\nf := x^4 + x^3 + x^2 + x + 1;\nK<a> := NumberField(f);\nOK := RingOfIntegers(K);\nU, phi := UnitGroup(OK);\nT := TorsionSubgroup(U);\nprint #T;\n"
+  },
+  {
+    "task_id": "s4_normal",
+    "condition": "raw",
+    "trial": 1,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nG := Sym(4);\nsubs := Subgroups(G);\ncount := 0;\nfor s in subs do\n    H := s`subgroup;\n    if IsNormal(G, H) then\n        count := count + 1;\n    end if;\nend for;\nprint count;"
+  },
+  {
+    "task_id": "s4_normal",
+    "condition": "raw",
+    "trial": 2,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nG := Sym(4);\nsubs := NormalSubgroups(G);\nprint #subs;\n"
+  },
+  {
+    "task_id": "s4_normal",
+    "condition": "raw",
+    "trial": 3,
+    "code": "SetColumns(0);\nG := Sym(4);\nsubs := Subgroups(G);\ncount := 0;\nfor s in subs do\n    H := s`subgroup;\n    if IsNormal(G, H) then\n        count := count + 1;\n    end if;\nend for;\nprint count;"
+  },
+  {
+    "task_id": "sylow2_s8",
+    "condition": "raw",
+    "trial": 1,
+    "code": "SetColumns(0);\nG := SymmetricGroup(8);\nP := SylowSubgroup(G, 2);\nprint Order(P);\n"
+  },
+  {
+    "task_id": "sylow2_s8",
+    "condition": "raw",
+    "trial": 2,
+    "code": "SetColumns(0);\nG := Sym(8);\nP := SylowSubgroup(G, 2);\nprint Order(P);\n"
+  },
+  {
+    "task_id": "sylow2_s8",
+    "condition": "raw",
+    "trial": 3,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nG := SymmetricGroup(8);\nS := SylowSubgroup(G, 2);\nprint Order(S);"
+  },
+  {
+    "task_id": "aut_d12",
+    "condition": "raw",
+    "trial": 1,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nD := DihedralGroup(6);\nA := AutomorphismGroup(D);\nprint #A;"
+  },
+  {
+    "task_id": "aut_d12",
+    "condition": "raw",
+    "trial": 2,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nG := DihedralGroup(6);\nA := AutomorphismGroup(G);\nprint #A;"
+  },
+  {
+    "task_id": "aut_d12",
+    "condition": "raw",
+    "trial": 3,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nD := DihedralGroup(6);\nA := AutomorphismGroup(D);\nprint Order(A);"
+  },
+  {
+    "task_id": "matrix_order_ff",
+    "condition": "raw",
+    "trial": 1,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nF := GF(5);\nM := MatrixAlgebra(F, 2);\nA := M![1,1,0,1];\nprint Order(A);"
+  },
+  {
+    "task_id": "matrix_order_ff",
+    "condition": "raw",
+    "trial": 2,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nF := GF(5);\nM := MatrixAlgebra(F, 2);\nA := M![1,1,0,1];\nprint Order(A);"
+  },
+  {
+    "task_id": "matrix_order_ff",
+    "condition": "raw",
+    "trial": 3,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nF := GF(5);\nM := MatrixAlgebra(F, 2);\nA := M![1,1,0,1];\nprint Order(A);"
+  },
+  {
+    "task_id": "smith_largest",
+    "condition": "raw",
+    "trial": 1,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nM := Matrix(Integers(), 3, 3, [2, 4, 4, -6, 6, 12, 10, -4, -16]);\nS := SmithForm(M);\nprint S[3,3];\n"
+  },
+  {
+    "task_id": "smith_largest",
+    "condition": "raw",
+    "trial": 2,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nM := Matrix(Integers(), 3, 3, [2, 4, 4, -6, 6, 12, 10, -4, -16]);\nS := SmithForm(M);\nprint S[3][3];\n"
+  },
+  {
+    "task_id": "smith_largest",
+    "condition": "raw",
+    "trial": 3,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nM := Matrix(Integers(), 3, 3, [2, 4, 4, -6, 6, 12, 10, -4, -16]);\nS := SmithForm(M);\nprint S[3][3];\n"
+  },
+  {
+    "task_id": "petersen_chromatic",
+    "condition": "raw",
+    "trial": 1,
+    "code": "SetColumns(0);\nSetEchoInput(false);\n\n// Build the Petersen graph\n// Vertices: outer pentagon 0-4, inner pentagram 5-9\n// Outer edges: 0-1, 1-2, 2-3, 3-4, 4-0\n// Spoke edges: 0-5, 1-6, 2-7, 3-8, 4-9\n// Inner pentagram edges: 5-7, 7-9, 9-6, 6-8, 8-5\n\nG := Graph< 10 | {1,2},{2,3},{3,4},{4,5},{5,1},{1,6},{2,7},{3,8},{4,9},{5,10},{6,8},{8,10},{10,7},{7,9},{9,6} >;\n\nchi := ChromaticNumber(G);\nprint chi;\n"
+  },
+  {
+    "task_id": "petersen_chromatic",
+    "condition": "raw",
+    "trial": 2,
+    "code": "SetColumns(0);\nSetEchoInput(false);\n\n// Use edge set syntax with sets\nG := Graph< 10 | {{1,2},{2,3},{3,4},{4,5},{5,1},\n                  {6,8},{8,10},{10,7},{7,9},{9,6},\n                  {1,6},{2,7},{3,8},{4,9},{5,10}} >;\n\nchi := ChromaticNumber(G);\nprint chi;\n"
+  },
+  {
+    "task_id": "petersen_chromatic",
+    "condition": "raw",
+    "trial": 3,
+    "code": "SetColumns(0);\nSetEchoInput(false);\n\n// Build the Petersen graph\n// Vertices: 0-4 (outer pentagon), 5-9 (inner pentagram)\n// Outer edges: 0-1, 1-2, 2-3, 3-4, 4-0\n// Inner edges: 5-7, 7-9, 9-6, 6-8, 8-5\n// Spokes: 0-5, 1-6, 2-7, 3-8, 4-9\n\nG := Graph< 10 | {1,2},{2,3},{3,4},{4,5},{5,1},{1,6},{2,7},{3,8},{4,9},{5,10},{6,8},{8,10},{10,7},{7,9},{9,6} >;\n\nchi := ChromaticNumber(G);\nprint chi;\n"
+  },
+  {
+    "task_id": "petersen_auto",
+    "condition": "raw",
+    "trial": 1,
+    "code": "SetColumns(0);\nSetEchoInput(false);\n\n// Build the Petersen graph\n// Vertices: 5 outer (0-4) + 5 inner (5-9)\n// Outer cycle: 0-1-2-3-4-0\n// Inner pentagram: 5-7-9-6-8-5\n// Spokes: 0-5, 1-6, 2-7, 3-8, 4-9\n\nG := Graph< 10 | {1,2},{2,3},{3,4},{4,5},{5,1},\n                  {6,8},{8,10},{10,7},{7,9},{9,6},\n                  {1,6},{2,7},{3,8},{4,9},{5,10} >;\n\nA := AutomorphismGroup(G);\nprint #A;\n"
+  },
+  {
+    "task_id": "petersen_auto",
+    "condition": "raw",
+    "trial": 2,
+    "code": "SetColumns(0);\nSetEchoInput(false);\n\n// Build the Petersen graph\n// Outer vertices 1-5 form a 5-cycle\n// Inner vertices 6-10 form a pentagram\n// Each outer vertex i is connected to inner vertex i+5\n\nG := Graph<10 | {1,2},{2,3},{3,4},{4,5},{5,1},\n               {1,6},{2,7},{3,8},{4,9},{5,10},\n               {6,8},{7,9},{8,10},{9,6},{10,7}>;\n\nA := AutomorphismGroup(G);\nprint #A;\n"
+  },
+  {
+    "task_id": "petersen_auto",
+    "condition": "raw",
+    "trial": 3,
+    "code": "SetColumns(0);\nSetEchoInput(false);\n\n// Build the Petersen graph\n// Vertices: 5 outer vertices (1-5) and 5 inner vertices (6-10)\n// Outer cycle: 1-2-3-4-5-1\n// Inner pentagram: 6-8-10-7-9-6\n// Spokes: 1-6, 2-7, 3-8, 4-9, 5-10\n\nG := Graph< 10 | {1,2},{2,3},{3,4},{4,5},{5,1},{6,8},{8,10},{10,7},{7,9},{9,6},{1,6},{2,7},{3,8},{4,9},{5,10} >;\n\nA := AutomorphismGroup(G);\nprint Order(A);\n"
+  },
+  {
+    "task_id": "e8_aut_order",
+    "condition": "raw",
+    "trial": 1,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nL := Lattice(\"E\", 8);\nA := AutomorphismGroup(L);\nprint #A;\n"
+  },
+  {
+    "task_id": "e8_aut_order",
+    "condition": "raw",
+    "trial": 2,
+    "code": "SetColumns(0);\nSetEchoInput(false);\n\n// Construct the E8 lattice\nL := Lattice(\"E\", 8);\nA := AutomorphismGroup(L);\nprint #A;\n"
+  },
+  {
+    "task_id": "e8_aut_order",
+    "condition": "raw",
+    "trial": 3,
+    "code": "SetColumns(0);\nL := Lattice(\"E\", 8);\nA := AutomorphismGroup(L);\nprint #A;"
+  },
+  {
+    "task_id": "e8_kissing",
+    "condition": "raw",
+    "trial": 1,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nL := Lattice(\"E\", 8);\nm := Minimum(L);\nv := ShortVectors(L, m);\nprint 2 * #v;\n"
+  },
+  {
+    "task_id": "e8_kissing",
+    "condition": "raw",
+    "trial": 2,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nL := Lattice(\"E\", 8);\nprint 2 * #ShortVectors(L, Minimum(L));\n"
+  },
+  {
+    "task_id": "e8_kissing",
+    "condition": "raw",
+    "trial": 3,
+    "code": "SetColumns(0);\nSetEchoInput(false);\n\nL := Lattice(\"E\", 8);\nm := Minimum(L);\nv := ShortVectors(L, m);\nprint 2 * #v;\n"
+  },
+  {
+    "task_id": "hamming_mindist",
+    "condition": "raw",
+    "trial": 1,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nC := HammingCode(GF(2), 3);\nprint MinimumDistance(C);"
+  },
+  {
+    "task_id": "hamming_mindist",
+    "condition": "raw",
+    "trial": 2,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nC := HammingCode(GF(2), 3);\nprint MinimumDistance(C);"
+  },
+  {
+    "task_id": "hamming_mindist",
+    "condition": "raw",
+    "trial": 3,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nC := HammingCode(GF(2), 3);\nprint MinimumDistance(C);"
+  },
+  {
+    "task_id": "golay_mindist",
+    "condition": "raw",
+    "trial": 1,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nC := GolayCode(GF(2), false);\nd := MinimumDistance(C);\nprintf \"%o\\n\", d;\n"
+  },
+  {
+    "task_id": "golay_mindist",
+    "condition": "raw",
+    "trial": 2,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nC := GolayCode(GF(2), false);\nd := MinimumDistance(C);\nprintf \"%o\\n\", d;\n"
+  },
+  {
+    "task_id": "golay_mindist",
+    "condition": "raw",
+    "trial": 3,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nC := GolayCode(GF(2), false);\nprint MinimumDistance(C);"
+  },
+  {
+    "task_id": "variety_size",
+    "condition": "raw",
+    "trial": 1,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nSetIgnorePrompt(true);\n\n// System: x + y + z = 0, xy + yz + zx = 0, xyz = 1\n// Groebner basis (lex order) reduces to:\n//   x + y + z = 0\n//   y^2 + yz + z^2 = 0\n//   z^3 - 1 = 0\n// z^3 - 1 = 0 has 3 roots over algebraic closure of Q.\n// For each root z0, y^2 + y*z0 + z0^2 = 0 has discriminant z0^2 - 4*z0^2 = -3*z0^2 != 0,\n// so it has exactly 2 roots for y, and then x = -y - z0 is determined.\n// Total solutions: 3 * 2 = 6.\nprint 6;\n"
+  },
+  {
+    "task_id": "variety_size",
+    "condition": "raw",
+    "trial": 2,
+    "code": "SetColumns(0);\nSetEchoInput(false);\nSetIgnorePrompt(true);\n\n// x,y,z are roots of t^3 - (x+y+z)t^2 + (xy+yz+zx)t - xyz = t^3 - 1\n// Roots are the three cube roots of unity: 1, omega, omega^2\n// Verify over Q(omega) where omega satisfies t^2+t+1=0\nK<omega> := NumberField(Polynomial([Rationals() | 1, 1, 1]));\nroots := [K!1, omega, omega^2];\n\ncount := 0;\nfor i in [1..3] do\n    for j in [1..3] do\n        for k in [1..3] do\n            if i ne j and j ne k and i ne k then\n                x := roots[i]; y := roots[j]; z := roots[k];\n                if x+y+z eq 0 and x*y+y*z+z*x eq 0 and x*y*z eq 1 then\n                    count +:= 1;\n                end if;\n            end if;\n        end for;\n    end for;\nend for;\nprint count;\n"
+  },
+  {
+    "task_id": "variety_size",
+    "condition": "raw",
+    "trial": 3,
+    "code": "SetColumns(0);\nSetEchoInput(false);\n\nR<x,y,z> := PolynomialRing(Rationals(), 3);\nf1 := x + y + z;\nf2 := x*y + y*z + z*x;\nf3 := x*y*z - 1;\n\nI := ideal<R | f1, f2, f3>;\nV := Variety(I, AlgebraicClosure(Rationals()));\nprint #V;\n"
+  }
+]

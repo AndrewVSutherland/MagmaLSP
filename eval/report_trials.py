@@ -14,7 +14,7 @@ import json
 import sys
 from collections import defaultdict
 
-CONDITIONS = ["closed", "lsp"]
+ORDER = ["closed", "raw", "lsp"]  # display order; only conditions present are shown
 
 
 def main() -> int:
@@ -25,24 +25,27 @@ def main() -> int:
     # (task, condition) -> list of bool correct
     by: dict[tuple[str, str], list[bool]] = defaultdict(list)
     domain: dict[str, str] = {}
+    present = set()
     for r in scored:
         by[(r["task_id"], r["condition"])].append(bool(r["correct"]))
         domain[r["task_id"]] = r.get("domain", "")
+        present.add(r["condition"])
+    conditions = [c for c in ORDER if c in present] + sorted(present - set(ORDER))
     tasks = sorted({t for t, _ in by})
 
-    lines = ["# Magma LLM eval (hard tasks, multi-trial) — closed-book vs LSP\n"]
+    lines = ["# Magma LLM eval (hard tasks, multi-trial) — " + " vs ".join(conditions) + "\n"]
     lines.append("Cell = correct trials / total trials.\n")
-    lines.append("| task | domain | closed | lsp |")
-    lines.append("|---|---|:---:|:---:|")
+    lines.append("| task | domain | " + " | ".join(conditions) + " |")
+    lines.append("|---|---|" + ":---:|" * len(conditions))
     for t in tasks:
         cells = []
-        for c in CONDITIONS:
+        for c in conditions:
             rs = by.get((t, c), [])
             cells.append(f"{sum(rs)}/{len(rs)}" if rs else "·")
-        lines.append(f"| {t} | {domain[t]} | {cells[0]} | {cells[1]} |")
+        lines.append(f"| {t} | {domain[t]} | " + " | ".join(cells) + " |")
 
     lines.append("\n## Aggregate\n")
-    for c in CONDITIONS:
+    for c in conditions:
         runs = [ok for (tk, cc), oks in by.items() if cc == c for ok in oks]
         task_rates = [sum(oks) / len(oks) for (tk, cc), oks in by.items() if cc == c and oks]
         solved = [1 for (tk, cc), oks in by.items() if cc == c and any(oks)]
@@ -55,20 +58,18 @@ def main() -> int:
             f"avg task success {avg:.0f}%, solved≥1 {solve:.0f}% ({len(solved)}/{n_tasks} tasks)"
         )
 
-    # tasks where lsp beats closed on solve-rate
-    better, worse = [], []
-    for t in tasks:
-        cl = by.get((t, "closed"), [])
-        lp = by.get((t, "lsp"), [])
-        if cl and lp:
-            csr, lsr = sum(cl) / len(cl), sum(lp) / len(lp)
-            if lsr > csr:
-                better.append(t)
-            elif lsr < csr:
-                worse.append(t)
-    lines.append("\n## Where the LSP changed the success rate\n")
-    lines.append(f"- lsp > closed: {better or 'none'}")
-    lines.append(f"- lsp < closed: {worse or 'none'}")
+    # pairwise: tasks where one condition beats another on success rate
+    def rate(t, c):
+        oks = by.get((t, c), [])
+        return (sum(oks) / len(oks)) if oks else None
+
+    lines.append("\n## Pairwise outcome changes (by task success rate)\n")
+    for a, b in [(x, y) for i, x in enumerate(conditions) for y in conditions[i + 1 :]]:
+        both = [t for t in tasks if rate(t, a) is not None and rate(t, b) is not None]
+        up = [t for t in both if rate(t, b) > rate(t, a)]
+        down = [t for t in both if rate(t, b) < rate(t, a)]
+        lines.append(f"- **{b} vs {a}**: {b} better on {up or 'none'};")
+        lines.append(f"  {b} worse on {down or 'none'}")
 
     report = "\n".join(lines)
     print(report)
