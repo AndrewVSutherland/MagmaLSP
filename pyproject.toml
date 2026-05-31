@@ -12,12 +12,14 @@ dependencies = [
     "lsprotocol>=2023.0.1",
     "tree-sitter>=0.23",
     "tree-sitter-magma",
+    "mcp>=1.2",
 ]
 
 [project.scripts]
 magma-lsp = "magma_lsp.server:main"
 magma-lsp-build-db = "magma_lsp.db.build:main"
 magma-lsp-cli = "magma_lsp.cli:main"
+magma-lsp-mcp = "magma_lsp.mcp_server:main"
 
 [project.optional-dependencies]
 dev = [

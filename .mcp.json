@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "magma-lsp": {
+      "command": "uv",
+      "args": ["run", "--project", "${CLAUDE_PLUGIN_ROOT}", "magma-lsp-mcp"],
+      "env": {
+        "MAGMA_PATH": "/opt/magma/magma"
+      }
+    }
+  }
+}
