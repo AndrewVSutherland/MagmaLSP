@@ -27,10 +27,18 @@ SCOPE_BOUNDARY = frozenset(
         "function_definition",
         "procedure_definition",
         "intrinsic_definition",
-        "function_expression",
-        "procedure_expression",
     }
 )
+
+
+def is_callable_ctor(node: Node) -> bool:
+    """A ``func< ... >`` / ``proc< ... >`` literal (they parse as ``constructor`` nodes)."""
+    if node.type != "constructor":
+        return False
+    for c in node.children:
+        if c.type == "identifier":
+            return node_text(c) in ("func", "proc")
+    return False
 
 
 @dataclass(frozen=True)
@@ -58,19 +66,18 @@ def _unit_nodes(unit: Node) -> list[Node]:
     return nodes
 
 
-_CALLABLE_RHS = frozenset(
-    {"function_definition", "procedure_definition", "function_expression", "procedure_expression"}
-)
+_CALLABLE_RHS = frozenset({"function_definition", "procedure_definition"})
 
 
 def _assignment_targets(node: Node) -> list[Node]:
-    # A binding whose value is a function/procedure literal is a callable definition, not a
-    # dead store: don't treat its target as an unused-variable candidate.
+    # A binding whose value is a function/procedure literal (including `func< ... >` /
+    # `proc< ... >`) is a callable definition, not a dead store: don't treat its target as an
+    # unused-variable candidate.
     seen_assign = False
     for child in node.children:
         if child.type == ":=":
             seen_assign = True
-        elif seen_assign and child.type in _CALLABLE_RHS:
+        elif seen_assign and (child.type in _CALLABLE_RHS or is_callable_ctor(child)):
             return []
     targets: list[Node] = []
     for child in node.children:
@@ -106,10 +113,12 @@ def _analyze_unit(unit: Node, out: list[Lint]) -> None:
                     def_ids.add(id(c))
                     first_def.setdefault(node_text(c), c)
         elif node.type == "for_quantifier":
+            # Loop variables are registered as definitions but never reported as unused:
+            # `for i := 1 to n do` (repeat-n-times) legitimately ignores i, and the `for x in S`
+            # form parses its binder inside a binary_operator anyway.
             for c in node.children:
                 if c.type == "identifier":
                     def_ids.add(id(c))
-                    first_def.setdefault(node_text(c), c)
                     break
 
     used: set[str] = set()
