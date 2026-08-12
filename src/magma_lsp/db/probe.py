@@ -14,24 +14,35 @@ The ``name;`` output (per name, between our ``@@@<name>`` markers):
     Signatures:
 
     (arg::Type, ...) -> Ret, ...
-    (arg::Type) -> Ret
+    [
+    OptParam: Type,
+    OtherParam
+    ]
 
     Doc paragraph shared by the preceding signature group.
 
-Undeclared names instead emit a non-fatal ``User error: Identifier ... not declared`` and are
-skipped. ``</dev/null`` keeps the non-fatal errors from blocking.
+i.e. each signature may be followed by a bracketed optional-parameter block (names, sometimes
+with types — information ``ListSignatures`` never shows), and a doc paragraph applies to the
+group of signatures since the previous doc. Undeclared names instead emit a non-fatal
+``User error: Identifier ... not declared`` and are skipped. ``</dev/null`` keeps the non-fatal
+errors from blocking.
+
+Besides recovering missing variadic intrinsics, this is the machinery for the **kernel doc
+harvest** (``probe_names`` over undocumented DB names): ``ListSignatures`` provides no doc
+strings, but ``name;`` does — for ~90% of the otherwise-undocumented names.
 """
 
 from __future__ import annotations
 
 import os
 import re
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from ..magma.runner import run_source
 from ..parsing import new_parser
 from .listsig import parse_listsig_line
-from .model import Signature
+from .model import Param, Signature
 
 MARKER = "@@@"
 _VALID_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -70,11 +81,21 @@ def build_probe_script(names: list[str]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _parse_opt_param(line: str) -> Param:
+    """One optional-parameter block entry: ``Name`` / ``Name,`` / ``Name: Type,``."""
+    entry = line.strip().rstrip(",").strip()
+    if ":" in entry:
+        pname, ptype = entry.split(":", 1)
+        return Param(name=pname.strip(), type=ptype.strip() or None)
+    return Param(name=entry)
+
+
 def _parse_signatures_section(name: str, body: list[str]) -> list[Signature]:
     sigs: list[Signature] = []
     pending: list[Signature] = []
     doc_buf: list[str] = []
     started = False
+    in_opt_block = False
 
     def flush_doc() -> None:
         if doc_buf and pending:
@@ -90,9 +111,19 @@ def _parse_signatures_section(name: str, body: list[str]) -> list[Signature]:
             if s == "Signatures:":
                 started = True
             continue
+        if in_opt_block:
+            if s == "]":
+                in_opt_block = False
+            elif s and pending:
+                pending[-1].opt_params.append(_parse_opt_param(s))
+            continue
         if s == "":
             if doc_buf:
                 flush_doc()
+            continue
+        if s == "[":
+            # optional-parameter block for the signature just parsed
+            in_opt_block = True
             continue
         if s.startswith("("):
             if doc_buf:
@@ -125,12 +156,24 @@ def parse_probe_output(text: str) -> dict[str, list[Signature]]:
 
 
 def probe_names(
-    names: list[str], *, magma_path: str | None = None, timeout: float = 180.0, batch: int = 4000
+    names: list[str],
+    *,
+    magma_path: str | None = None,
+    timeout: float = 180.0,
+    batch: int = 500,
+    workers: int | None = None,
 ) -> dict[str, list[Signature]]:
-    """Probe ``names`` in batches; return {name: signatures} for those that are intrinsics."""
+    """Probe ``names`` in parallel batches; return {name: signatures} for the intrinsics."""
+    names = [n for n in names if _VALID_NAME.match(n)]  # never interpolate junk into Magma source
+    chunks = [names[i : i + batch] for i in range(0, len(names), batch)]
+    workers = workers or min(8, (os.cpu_count() or 4), max(1, len(chunks)))
     out: dict[str, list[Signature]] = {}
-    for i in range(0, len(names), batch):
-        chunk = names[i : i + batch]
+
+    def probe_chunk(chunk: list[str]) -> dict[str, list[Signature]]:
         res = run_source(build_probe_script(chunk), magma_path=magma_path, timeout=timeout)
-        out.update(parse_probe_output(res.stdout))
+        return parse_probe_output(res.stdout)
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        for result in pool.map(probe_chunk, chunks):
+            out.update(result)
     return out

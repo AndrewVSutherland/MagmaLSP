@@ -22,7 +22,7 @@ import re
 from ..magma.runner import run_source
 from .model import Param, Signature
 
-CAT_NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9]*$")
+CAT_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")  # 2.29-9 added a _-prefixed category
 # A signature line starts with an operator in quotes or a bareword identifier, then "(".
 SIG_LINE_RE = re.compile(r"^\s*('[^']+'|[A-Za-z_][A-Za-z0-9_]*)\s*\(")
 
