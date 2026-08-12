@@ -34,11 +34,17 @@ class MagmaResult:
     stdout: str  # combined stdout+stderr
     returncode: int
     timed_out: bool
+    # The temp file the source ran from: lets callers filter Magma's positioned error blocks
+    # to *our* file, so program output that merely looks like an error block is not parsed
+    # as a diagnostic. (The file itself is deleted before this returns.)
+    source_path: str | None = None
 
 
 def find_magma(explicit: str | None = None) -> str | None:
-    """Resolve the Magma wrapper. Prefer an explicit path, then PATH, then the known VM location."""
-    for candidate in (explicit, "magma", "/opt/magma/magma", "/usr/local/bin/magma"):
+    """Resolve the Magma wrapper: explicit path, then ``MAGMA_PATH`` env (set e.g. by the
+    plugin's ``.mcp.json``), then PATH, then the known install locations."""
+    env = os.environ.get("MAGMA_PATH")
+    for candidate in (explicit, env, "magma", "/opt/magma/magma", "/usr/local/bin/magma"):
         if not candidate:
             continue
         resolved = shutil.which(candidate) or (candidate if os.path.exists(candidate) else None)
@@ -89,10 +95,15 @@ def run_source(
             )
         out = proc.stdout.decode("utf-8", "replace") if proc.stdout else ""
         # `timeout` exits 124 when it had to kill the child.
-        return MagmaResult(stdout=out, returncode=proc.returncode, timed_out=proc.returncode == 124)
+        return MagmaResult(
+            stdout=out,
+            returncode=proc.returncode,
+            timed_out=proc.returncode == 124,
+            source_path=path,
+        )
     except subprocess.TimeoutExpired as exc:
         out = exc.stdout.decode("utf-8", "replace") if exc.stdout else ""
-        return MagmaResult(stdout=out, returncode=124, timed_out=True)
+        return MagmaResult(stdout=out, returncode=124, timed_out=True, source_path=path)
     finally:
         with contextlib.suppress(OSError):
             os.unlink(path)
