@@ -19,6 +19,7 @@ ORDER = ["closed", "raw", "lsp"]  # display order; only conditions present are s
 
 def main() -> int:
     path = sys.argv[1] if len(sys.argv) > 1 else "eval/scored_hard.json"
+    label = sys.argv[2] if len(sys.argv) > 2 else "hard tasks"
     with open(path, encoding="utf-8") as fh:
         scored = json.load(fh)
 
@@ -33,7 +34,7 @@ def main() -> int:
     conditions = [c for c in ORDER if c in present] + sorted(present - set(ORDER))
     tasks = sorted({t for t, _ in by})
 
-    lines = ["# Magma LLM eval (hard tasks, multi-trial) — " + " vs ".join(conditions) + "\n"]
+    lines = [f"# Magma LLM eval ({label}, multi-trial) — " + " vs ".join(conditions) + "\n"]
     lines.append("Cell = correct trials / total trials.\n")
     lines.append("| task | domain | " + " | ".join(conditions) + " |")
     lines.append("|---|---|" + ":---:|" * len(conditions))

@@ -92,8 +92,11 @@ The plugin bundles **two** ways into the same core intelligence (`src/magma_lsp/
     program's own line numbers and head+tail output truncation.
 
   These give the agent the execution loop (`run`/`check`) plus the signature DB
-  (`search`/`lookup`) — the two levers our evals identified (see
-  [`eval/FINDINGS_3arm.md`](eval/FINDINGS_3arm.md), [`eval/FINDINGS_trap.md`](eval/FINDINGS_trap.md)).
+  (`search`/`lookup`) — the two levers our evals identified. For frontier models the DB is an
+  efficiency layer over execution; for smaller models it is a *capability* lever — Haiku 4.5 with
+  these tools plays at tooled-Sonnet level, and the DB's docs fix exactly the silent-wrong
+  convention failures raw execution can't see (see [`eval/FINDINGS_3arm.md`](eval/FINDINGS_3arm.md),
+  [`eval/FINDINGS_trap.md`](eval/FINDINGS_trap.md), [`eval/FINDINGS_haiku.md`](eval/FINDINGS_haiku.md)).
   The CLI ([`magma-lsp-cli`](src/magma_lsp/cli.py)) exposes the same operations from a shell.
 
 **Execution sandbox (current):** every `run`/`check` is a fresh, hermetic Magma process under a

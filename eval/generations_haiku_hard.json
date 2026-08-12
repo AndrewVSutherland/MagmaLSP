@@ -1,0 +1,1622 @@
+[
+ {
+  "task_id": "amicable_count",
+  "condition": "closed",
+  "trial": 0,
+  "bench": "hard",
+  "code": "count := 0;\nfor n := 2 to 2000 do\n    m := SumOfDivisors(n) - n;\n    if m ne n and m gt 1 then\n        if SumOfDivisors(m) - m eq n then\n            count +:= 1;\n        end if;\n    end if;\nend for;\nprint count;",
+  "n_runs": 0,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "amicable_count",
+  "condition": "closed",
+  "trial": 1,
+  "bench": "hard",
+  "code": "count := 0;\nfor n := 2 to 2000 do\n    divs := Divisors(n);\n    proper_sum := &+ [d : d in divs | d ne n];\n    m := proper_sum;\n    if m ne n then\n        divs_m := Divisors(m);\n        sum_proper_m := &+ [d : d in divs_m | d ne m];\n        if sum_proper_m eq n then\n            count := count + 1;\n        end if;\n    end if;\nend for;\nprint count;",
+  "n_runs": 0,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "amicable_count",
+  "condition": "closed",
+  "trial": 2,
+  "bench": "hard",
+  "code": "ProperDivisorSum := function(n)\n    return &+Divisors(n) - n;\nend function;\n\ncount := 0;\nfor n := 2 to 2000 do\n    m := ProperDivisorSum(n);\n    if m ne n and m ge 2 and m le 2000 then\n        if ProperDivisorSum(m) eq n then\n            count := count + 1;\n        end if;\n    end if;\nend for;\n\nprint count;",
+  "n_runs": 0,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "amicable_count",
+  "condition": "raw",
+  "trial": 0,
+  "bench": "hard",
+  "code": "// Count amicable numbers in range [2, 2000]\n\ncount := 0;\n\nfor n := 2 to 2000 do\n    // Calculate sum of proper divisors of n\n    spd_n := DivisorSigma(1, n) - n;\n\n    if spd_n ne n and spd_n ge 1 then\n        // Calculate sum of proper divisors of spd_n\n        spd_m := DivisorSigma(1, spd_n) - spd_n;\n\n        if spd_m eq n then\n            count := count + 1;\n        end if;\n    end if;\nend for;\n\nprint count;",
+  "n_runs": 1,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "amicable_count",
+  "condition": "raw",
+  "trial": 1,
+  "bench": "hard",
+  "code": "function SumOfProperDivisors(n)\n    if n le 1 then return 0; end if;\n    sum := 1;\n    d := 2;\n    while d * d le n do\n        if n mod d eq 0 then\n            sum +:= d;\n            complement := n div d;\n            if d ne complement then\n                sum +:= complement;\n            end if;\n        end if;\n        d +:= 1;\n    end while;\n    return sum;\nend function;\n\ncount := 0;\nfor n in [2..2000] do\n    m := SumOfProperDivisors(n);\n    if m ne n and m ge 2 and SumOfProperDivisors(m) eq n then\n        count +:= 1;\n    end if;\nend for;\n\nprint count;",
+  "n_runs": 1,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "amicable_count",
+  "condition": "raw",
+  "trial": 2,
+  "bench": "hard",
+  "code": "// Function to compute sum of proper divisors of n\n// Proper divisors are all positive divisors except n itself\nsumProperDivisors := function(n)\n    if n le 1 then\n        return 0;\n    end if;\n    sum := 1; // 1 is always a proper divisor for n > 1\n    for i := 2 to Isqrt(n) do\n        if n mod i eq 0 then\n            sum := sum + i;\n            if i ne n div i then\n                sum := sum + (n div i);\n            end if;\n        end if;\n    end for;\n    return sum;\nend function;\n\n// Count amicable numbers\ncount := 0;\nfor n := 2 to 2000 do\n    m := sumProperDivisors(n);\n    if m ne n and m gt 0 and sumProperDivisors(m) eq n then\n        count := count + 1;\n    end if;\nend for;\n\nprint count;",
+  "n_runs": 1,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "amicable_count",
+  "condition": "lsp",
+  "trial": 0,
+  "bench": "hard",
+  "code": "// Count amicable numbers from 2 to 2000\ncount := 0;\nfor n := 2 to 2000 do\n    sum_n := SumOfDivisors(n) - n;\n    if (sum_n ge 2) and (sum_n le 2000) and (sum_n ne n) then\n        sum_m := SumOfDivisors(sum_n) - sum_n;\n        if sum_m eq n then\n            count := count + 1;\n        end if;\n    end if;\nend for;\nprint count;",
+  "n_runs": 3,
+  "n_lookups": 3
+ },
+ {
+  "task_id": "amicable_count",
+  "condition": "lsp",
+  "trial": 1,
+  "bench": "hard",
+  "code": "// Count amicable numbers in [2, 2000]\n// An amicable number n is one where sum_of_proper_divisors(n) = m != n\n// and sum_of_proper_divisors(m) = n\n\n// Function to compute sum of proper divisors\nProperDivisorSum := function(n)\n  return SumOfDivisors(n) - n;\nend function;\n\ncount := 0;\nfor n := 2 to 2000 do\n  m := ProperDivisorSum(n);\n  // Check if m != n and m is also properly paired back to n\n  if m ne n and ProperDivisorSum(m) eq n then\n    count := count + 1;\n  end if;\nend for;\n\nprint count;",
+  "n_runs": 2,
+  "n_lookups": 3
+ },
+ {
+  "task_id": "amicable_count",
+  "condition": "lsp",
+  "trial": 2,
+  "bench": "hard",
+  "code": "count := 0;\nfor n := 2 to 2000 do\n  // Sum of proper divisors of n (all divisors except n itself)\n  sum_div_n := SumOfDivisors(n) - n;\n  m := sum_div_n;\n\n  // Check if m is valid and m != n\n  if m ne n and m gt 0 then\n    // Check if sum of proper divisors of m equals n\n    sum_div_m := SumOfDivisors(m) - m;\n    if sum_div_m eq n then\n      count := count + 1;\n    end if;\n  end if;\nend for;\n\nprint count;",
+  "n_runs": 4,
+  "n_lookups": 5
+ },
+ {
+  "task_id": "resultant",
+  "condition": "closed",
+  "trial": 0,
+  "bench": "hard",
+  "code": "P<x> := PolynomialRing(Rationals());\nf := x^4 - 1;\ng := x^3 + 2*x + 1;\nresult := Resultant(f, g);\nprint result;",
+  "n_runs": 0,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "resultant",
+  "condition": "closed",
+  "trial": 1,
+  "bench": "hard",
+  "code": "P<x> := PolynomialRing(RationalField());\nf := x^4 - 1;\ng := x^3 + 2*x + 1;\nprint Resultant(f, g);",
+  "n_runs": 0,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "resultant",
+  "condition": "closed",
+  "trial": 2,
+  "bench": "hard",
+  "code": "R<x> := PolynomialRing(RationalField());\nprint Resultant(x^4 - 1, x^3 + 2*x + 1);",
+  "n_runs": 0,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "resultant",
+  "condition": "raw",
+  "trial": 0,
+  "bench": "hard",
+  "code": "Q<x> := PolynomialRing(Rationals());\np1 := x^4 - 1;\np2 := x^3 + 2*x + 1;\nresult := Resultant(p1, p2);\nprint result;",
+  "n_runs": 1,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "resultant",
+  "condition": "raw",
+  "trial": 1,
+  "bench": "hard",
+  "code": "P<x> := PolynomialRing(Rationals());\np1 := x^4 - 1;\np2 := x^3 + 2*x + 1;\nr := Resultant(p1, p2);\nprint r;",
+  "n_runs": 1,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "resultant",
+  "condition": "raw",
+  "trial": 2,
+  "bench": "hard",
+  "code": "R<x> := PolynomialRing(Rationals());\nf := x^4 - 1;\ng := x^3 + 2*x + 1;\nprint Resultant(f, g);",
+  "n_runs": 1,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "resultant",
+  "condition": "lsp",
+  "trial": 0,
+  "bench": "hard",
+  "code": "R<x> := PolynomialRing(Rationals());\nf := x^4 - 1;\ng := x^3 + 2*x + 1;\nresult := Resultant(f, g);\nprint result;",
+  "n_runs": 2,
+  "n_lookups": 3
+ },
+ {
+  "task_id": "resultant",
+  "condition": "lsp",
+  "trial": 1,
+  "bench": "hard",
+  "code": "R<x> := PolynomialRing(Rationals());\nf := x^4 - 1;\ng := x^3 + 2*x + 1;\nresult := Resultant(f, g);\nprint result;",
+  "n_runs": 2,
+  "n_lookups": 3
+ },
+ {
+  "task_id": "resultant",
+  "condition": "lsp",
+  "trial": 2,
+  "bench": "hard",
+  "code": "R<x> := PolynomialRing(Rationals());\nf := x^4 - 1;\ng := x^3 + 2*x + 1;\nprint Resultant(f, g);",
+  "n_runs": 2,
+  "n_lookups": 3
+ },
+ {
+  "task_id": "factors_x15",
+  "condition": "closed",
+  "trial": 0,
+  "bench": "hard",
+  "code": "R := PolynomialRing(Rationals());\nf := x^15 - 1;\nfactors := Factorization(f);\nprint #factors;",
+  "n_runs": 0,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "factors_x15",
+  "condition": "closed",
+  "trial": 1,
+  "bench": "hard",
+  "code": "R<x> := PolynomialRing(Rationals());\nf := x^15 - 1;\nfactors := Factorization(f);\nprint #factors;",
+  "n_runs": 0,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "factors_x15",
+  "condition": "closed",
+  "trial": 2,
+  "bench": "hard",
+  "code": "R<x> := PolynomialRing(Rationals());\nf := x^15 - 1;\nfactors := Factorization(f);\nprint #factors;",
+  "n_runs": 0,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "factors_x15",
+  "condition": "raw",
+  "trial": 0,
+  "bench": "hard",
+  "code": "R<x> := PolynomialRing(Rationals());\nf := x^15 - 1;\nfactors := Factorization(f);\nprint #factors;",
+  "n_runs": 1,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "factors_x15",
+  "condition": "raw",
+  "trial": 1,
+  "bench": "hard",
+  "code": "R<x> := PolynomialRing(Rationals());\nP := x^15 - 1;\nfactors := Factorization(P);\nprint #factors;",
+  "n_runs": 1,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "factors_x15",
+  "condition": "raw",
+  "trial": 2,
+  "bench": "hard",
+  "code": "R<x> := PolynomialRing(Rationals());\nf := x^15 - 1;\nfactors := Factorization(f);\nprint #factors;",
+  "n_runs": 1,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "factors_x15",
+  "condition": "lsp",
+  "trial": 0,
+  "bench": "hard",
+  "code": "R<x> := PolynomialRing(Rationals());\nf := x^15 - 1;\nfactors := Factorization(f);\nprint #factors;",
+  "n_runs": 4,
+  "n_lookups": 6
+ },
+ {
+  "task_id": "factors_x15",
+  "condition": "lsp",
+  "trial": 1,
+  "bench": "hard",
+  "code": "R<x> := PolynomialRing(Rationals());\nf := x^15 - 1;\nfactors := Factorization(f);\nprint #factors;",
+  "n_runs": 5,
+  "n_lookups": 6
+ },
+ {
+  "task_id": "factors_x15",
+  "condition": "lsp",
+  "trial": 2,
+  "bench": "hard",
+  "code": "R<x> := PolynomialRing(Rationals());\nf := x^15 - 1;\nfactors := Factorization(f);\nprint #factors;",
+  "n_runs": 3,
+  "n_lookups": 6
+ },
+ {
+  "task_id": "mult_order",
+  "condition": "closed",
+  "trial": 0,
+  "bench": "hard",
+  "code": "p := 1000000007;\nprint MultiplicativeOrder(2, p);",
+  "n_runs": 0,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "mult_order",
+  "condition": "closed",
+  "trial": 1,
+  "bench": "hard",
+  "code": "p := 1000000007;\nfor d in Divisors(p - 1) do\n  if Modexp(2, d, p) eq 1 then\n    print d;\n    break;\n  end if;\nend for;",
+  "n_runs": 0,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "mult_order",
+  "condition": "closed",
+  "trial": 2,
+  "bench": "hard",
+  "code": "p := 1000000007;\nR := Integers(p);\na := R!2;\nprint Order(a);",
+  "n_runs": 0,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "mult_order",
+  "condition": "raw",
+  "trial": 0,
+  "bench": "hard",
+  "code": "p := 1000000007;\ng := (Integers(p))!2;\nprint Order(g);",
+  "n_runs": 1,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "mult_order",
+  "condition": "raw",
+  "trial": 1,
+  "bench": "hard",
+  "code": "p := 1000000007;\ng := GF(p);\nprint Order(g!2);",
+  "n_runs": 1,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "mult_order",
+  "condition": "raw",
+  "trial": 2,
+  "bench": "hard",
+  "code": "p := 1000000007;\nF := FiniteField(p);\norder := Order(F!2);\nprint order;",
+  "n_runs": 1,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "mult_order",
+  "condition": "lsp",
+  "trial": 0,
+  "bench": "hard",
+  "code": "// Compute the multiplicative order of 2 modulo 1000000007\np := 1000000007;\nF := GF(p);\na := F ! 2;\nk := 1;\nb := a;\nwhile b ne 1 do\n    b := b * a;\n    k := k + 1;\nend while;\nprint k;",
+  "n_runs": 2,
+  "n_lookups": 7
+ },
+ {
+  "task_id": "mult_order",
+  "condition": "lsp",
+  "trial": 1,
+  "bench": "hard",
+  "code": "p := 1000000007;\nR := ResidueClassRing(p);\na := R ! 2;\n\n// The order divides p-1 by Fermat's Little Theorem\nphi := p - 1;\ndivisors := Divisors(phi);\nSort(~divisors);\n\n// Find the smallest divisor d such that a^d = 1\nfor d in divisors do\n    if a^d eq R ! 1 then\n        print d;\n        break;\n    end if;\nend for;",
+  "n_runs": 4,
+  "n_lookups": 7
+ },
+ {
+  "task_id": "mult_order",
+  "condition": "lsp",
+  "trial": 2,
+  "bench": "hard",
+  "code": "print Modorder(2, 1000000007);",
+  "n_runs": 2,
+  "n_lookups": 10
+ },
+ {
+  "task_id": "bernoulli_digits",
+  "condition": "closed",
+  "trial": 0,
+  "bench": "hard",
+  "code": "b := BernoulliNumber(10000);\nnum := Abs(Numerator(b));\nprint #Intseq(num, 10);",
+  "n_runs": 0,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "bernoulli_digits",
+  "condition": "closed",
+  "trial": 1,
+  "bench": "hard",
+  "code": "b := BernoulliNumber(10000);\nnum := Abs(Numerator(b));\nprint #IntegerToString(num);",
+  "n_runs": 0,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "bernoulli_digits",
+  "condition": "closed",
+  "trial": 2,
+  "bench": "hard",
+  "code": "b := BernoulliNumber(10000);\nnum := Numerator(b);\nabs_num := Abs(num);\nprint #IntegerToString(abs_num);",
+  "n_runs": 0,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "bernoulli_digits",
+  "condition": "raw",
+  "trial": 0,
+  "bench": "hard",
+  "code": "// Compute the number of decimal digits of the numerator of B_10000\nb := BernoulliNumber(10000);\nnum := Numerator(b);\nabs_num := Abs(num);\ndigits := #Sprint(abs_num);\nprint digits;",
+  "n_runs": 3,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "bernoulli_digits",
+  "condition": "raw",
+  "trial": 1,
+  "bench": "hard",
+  "code": "B := BernoulliNumber(10000);\nnum := Numerator(B);\nabs_num := Abs(num);\ns := IntegerToString(abs_num);\nprint #s;",
+  "n_runs": 5,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "bernoulli_digits",
+  "condition": "raw",
+  "trial": 2,
+  "bench": "hard",
+  "code": "B := BernoulliNumber(10000);\nnum := Numerator(B);\nabs_num := Abs(num);\nnum_str := Sprint(abs_num);\ndigit_count := #num_str;\nprint digit_count;",
+  "n_runs": 1,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "bernoulli_digits",
+  "condition": "lsp",
+  "trial": 0,
+  "bench": "hard",
+  "code": "// Compute the number of decimal digits of the numerator of B_10000\nb := BernoulliNumber(10000);\nnum := Numerator(b);\nabs_num := Abs(num);\ns := IntegerToString(abs_num);\nprint #s;",
+  "n_runs": 7,
+  "n_lookups": 6
+ },
+ {
+  "task_id": "bernoulli_digits",
+  "condition": "lsp",
+  "trial": 1,
+  "bench": "hard",
+  "code": "// Compute the number of decimal digits of the numerator of B_10000\nb := BernoulliNumber(10000);\nnum := Numerator(b);\nabs_num := Abs(num);\n\n// Count decimal digits\nif abs_num eq 0 then\n    digits := 1;\nelse\n    digits := #IntegerToString(abs_num);\nend if;\n\nprint digits;",
+  "n_runs": 6,
+  "n_lookups": 6
+ },
+ {
+  "task_id": "bernoulli_digits",
+  "condition": "lsp",
+  "trial": 2,
+  "bench": "hard",
+  "code": "// Compute number of decimal digits of the numerator of B_10000\nb := BernoulliNumber(10000);\nnum := Numerator(b);\nabs_num := Abs(num);\nnum_digits := Ilog(10, abs_num) + 1;\nprint num_digits;",
+  "n_runs": 9,
+  "n_lookups": 9
+ },
+ {
+  "task_id": "splitting_degree",
+  "condition": "closed",
+  "trial": 0,
+  "bench": "hard",
+  "code": "P<x> := PolynomialRing(Rationals());\nf := x^3 - 2;\nK := SplittingField(f);\nprint Degree(K);",
+  "n_runs": 0,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "splitting_degree",
+  "condition": "closed",
+  "trial": 1,
+  "bench": "hard",
+  "code": "R<x> := PolynomialRing(Rationals());\nf := x^3 - 2;\nK := SplittingField(f);\nprint Degree(K);",
+  "n_runs": 0,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "splitting_degree",
+  "condition": "closed",
+  "trial": 2,
+  "bench": "hard",
+  "code": "R<x> := PolynomialRing(Rationals());\nK, _ := SplittingField(x^3 - 2);\nprint Degree(K);",
+  "n_runs": 0,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "splitting_degree",
+  "condition": "raw",
+  "trial": 0,
+  "bench": "hard",
+  "code": "P<x> := PolynomialRing(Rationals());\nf := x^3 - 2;\nK := SplittingField(f);\nprint Degree(K);",
+  "n_runs": 1,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "splitting_degree",
+  "condition": "raw",
+  "trial": 1,
+  "bench": "hard",
+  "code": "P<x> := PolynomialRing(Rationals());\nf := x^3 - 2;\nK := SplittingField(f);\nd := Degree(K);\nprint d;",
+  "n_runs": 1,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "splitting_degree",
+  "condition": "raw",
+  "trial": 2,
+  "bench": "hard",
+  "code": "P<x> := PolynomialRing(Rationals());\nf := x^3 - 2;\nK<a> := SplittingField(f);\nprint Degree(K);",
+  "n_runs": 1,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "splitting_degree",
+  "condition": "lsp",
+  "trial": 0,
+  "bench": "hard",
+  "code": "R<x> := PolynomialRing(Rationals());\nf := x^3 - 2;\nK, roots, G := GaloisSplittingField(f);\n\n// Calculate the degree by multiplying the degrees in the tower\ntotal_degree := 1;\ncurrent := K;\nwhile current ne Rationals() do\n    total_degree := total_degree * Degree(current);\n    current := BaseField(current);\nend while;\n\nprint total_degree;",
+  "n_runs": 12,
+  "n_lookups": 7
+ },
+ {
+  "task_id": "splitting_degree",
+  "condition": "lsp",
+  "trial": 1,
+  "bench": "hard",
+  "code": "R<x> := PolynomialRing(Rationals());\nf := x^3 - 2;\nK, roots, G := GaloisSplittingField(f);\nprint AbsoluteDegree(K);",
+  "n_runs": 6,
+  "n_lookups": 8
+ },
+ {
+  "task_id": "splitting_degree",
+  "condition": "lsp",
+  "trial": 2,
+  "bench": "hard",
+  "code": "R<x> := PolynomialRing(Rationals());\nf := x^3 - 2;\nK, roots := EmbeddedSplittingField(f);\nprint Degree(DefiningPolynomial(K));",
+  "n_runs": 5,
+  "n_lookups": 11
+ },
+ {
+  "task_id": "galois_order",
+  "condition": "closed",
+  "trial": 0,
+  "bench": "hard",
+  "code": "R<x> := PolynomialRing(Rationals());\nf := x^5 - 2;\nG := GaloisGroup(f);\nprint #G;",
+  "n_runs": 0,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "galois_order",
+  "condition": "closed",
+  "trial": 1,
+  "bench": "hard",
+  "code": "R<x> := PolynomialRing(Rationals());\nf := x^5 - 2;\nG, K := GaloisGroup(f);\nprint Order(G);",
+  "n_runs": 0,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "galois_order",
+  "condition": "closed",
+  "trial": 2,
+  "bench": "hard",
+  "code": "P<x> := PolynomialRing(Rationals());\nf := x^5 - 2;\nG := GaloisGroup(f);\nprint Order(G);",
+  "n_runs": 0,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "galois_order",
+  "condition": "raw",
+  "trial": 0,
+  "bench": "hard",
+  "code": "R<x> := PolynomialRing(Rationals());\nf := x^5 - 2;\nG, _, _ := GaloisGroup(f);\nprint Order(G);",
+  "n_runs": 1,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "galois_order",
+  "condition": "raw",
+  "trial": 1,
+  "bench": "hard",
+  "code": "R<x> := PolynomialRing(Rationals());\nf := x^5 - 2;\nG, _, _ := GaloisGroup(f);\nprint #G;",
+  "n_runs": 1,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "galois_order",
+  "condition": "raw",
+  "trial": 2,
+  "bench": "hard",
+  "code": "R<x> := PolynomialRing(Rationals());\nf := x^5 - 2;\nG := GaloisGroup(f);\nprint Order(G);",
+  "n_runs": 1,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "galois_order",
+  "condition": "lsp",
+  "trial": 0,
+  "bench": "hard",
+  "code": "// Compute the order of the Galois group of x^5 - 2 over Q\nR<x> := PolynomialRing(Rationals());\nf := x^5 - 2;\n_, _, G, _ := GaloisSplittingField(f);\nprint #G;",
+  "n_runs": 2,
+  "n_lookups": 5
+ },
+ {
+  "task_id": "galois_order",
+  "condition": "lsp",
+  "trial": 1,
+  "bench": "hard",
+  "code": "R<x> := PolynomialRing(Rationals());\nf := x^5 - 2;\nG, roots, galdata := GaloisGroup(f);\nprint #G;",
+  "n_runs": 3,
+  "n_lookups": 4
+ },
+ {
+  "task_id": "galois_order",
+  "condition": "lsp",
+  "trial": 2,
+  "bench": "hard",
+  "code": "// Compute the order of the Galois group of x^5 - 2 over Q\n\nR<x> := PolynomialRing(Rationals());\nf := x^5 - 2;\n\n// Compute the Galois splitting field\nK, roots, G, autos := GaloisSplittingField(f);\n\n// Print the order of the Galois group\nprint #G;",
+  "n_runs": 2,
+  "n_lookups": 10
+ },
+ {
+  "task_id": "torsion_units",
+  "condition": "closed",
+  "trial": 0,
+  "bench": "hard",
+  "code": "K<a> := NumberField(x^4 + x^3 + x^2 + x + 1);\nprint #RootsOfUnity(K);",
+  "n_runs": 0,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "torsion_units",
+  "condition": "closed",
+  "trial": 1,
+  "bench": "hard",
+  "code": "R<x> := PolynomialRing(Rationals());\nf := x^4 + x^3 + x^2 + x + 1;\nK<a> := NumberField(f);\nrots := RootsOfUnity(K);\nprint #rots;",
+  "n_runs": 0,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "torsion_units",
+  "condition": "closed",
+  "trial": 2,
+  "bench": "hard",
+  "code": "R<x> := PolynomialRing(Rationals());\nf := x^4 + x^3 + x^2 + x + 1;\nK<a> := NumberField(f);\nU, phi := UnitGroup(K);\nT := TorsionSubgroup(U);\nprint #T;",
+  "n_runs": 0,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "torsion_units",
+  "condition": "raw",
+  "trial": 0,
+  "bench": "hard",
+  "code": "P<x> := PolynomialRing(Rationals());\nf := x^4 + x^3 + x^2 + x + 1;\nK<alpha> := NumberField(f);\nOK := Integers(K);\nU := UnitGroup(OK);\ntorsion := TorsionSubgroup(U);\nprint #torsion;",
+  "n_runs": 2,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "torsion_units",
+  "condition": "raw",
+  "trial": 1,
+  "bench": "hard",
+  "code": "R<x> := PolynomialRing(Rationals());\nf := x^4 + x^3 + x^2 + x + 1;\nK<a> := NumberField(f);\nU, mu := UnitGroup(K);\nT := TorsionSubgroup(U);\nprint #T;",
+  "n_runs": 2,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "torsion_units",
+  "condition": "raw",
+  "trial": 2,
+  "bench": "hard",
+  "code": "// Number field Q[x]/(x^4 + x^3 + x^2 + x + 1)\nR<x> := PolynomialRing(Rationals());\nf := x^4 + x^3 + x^2 + x + 1;\nK<a> := NumberField(f);\n\n// Get the group of roots of unity\ntorsion := TorsionSubgroup(UnitGroup(K));\n\n// Print the order of the torsion subgroup\nprint Order(torsion);",
+  "n_runs": 1,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "torsion_units",
+  "condition": "lsp",
+  "trial": 0,
+  "bench": "hard",
+  "code": "R<x> := PolynomialRing(Rationals());\nf := x^4 + x^3 + x^2 + x + 1;\nK<a> := NumberField(f);\nT, m := TorsionUnitGroup(K);\nprint #T;",
+  "n_runs": 6,
+  "n_lookups": 14
+ },
+ {
+  "task_id": "torsion_units",
+  "condition": "lsp",
+  "trial": 1,
+  "bench": "hard",
+  "code": "R<x> := PolynomialRing(Rationals());\nf := x^4 + x^3 + x^2 + x + 1;\nK<alpha> := NumberField(f);\nT, m := TorsionUnitGroup(K);\nprint #T;",
+  "n_runs": 4,
+  "n_lookups": 7
+ },
+ {
+  "task_id": "torsion_units",
+  "condition": "lsp",
+  "trial": 2,
+  "bench": "hard",
+  "code": "R<x> := PolynomialRing(Rationals());\nf := x^4 + x^3 + x^2 + x + 1;\nK<a> := NumberField(f);\nO := Integers(K);\nU, mu := UnitGroup(O);\ntorsion_invs := TorsionInvariants(U);\nif #torsion_invs gt 0 then\n  product := &*torsion_invs;\n  print product;\nelse\n  print 1;\nend if;",
+  "n_runs": 8,
+  "n_lookups": 18
+ },
+ {
+  "task_id": "s4_normal",
+  "condition": "closed",
+  "trial": 0,
+  "bench": "hard",
+  "code": "G := Sym(4);\nnsg := #NormalSubgroups(G);\nprint nsg;",
+  "n_runs": 0,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "s4_normal",
+  "condition": "closed",
+  "trial": 1,
+  "bench": "hard",
+  "code": "G := Sym(4);\nprint #[H : H in Subgroups(G) | IsNormal(G, H)];",
+  "n_runs": 0,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "s4_normal",
+  "condition": "closed",
+  "trial": 2,
+  "bench": "hard",
+  "code": "G := SymmetricGroup(4);\nN := NormalSubgroups(G);\nprint #N;",
+  "n_runs": 0,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "s4_normal",
+  "condition": "raw",
+  "trial": 0,
+  "bench": "hard",
+  "code": "G := Sym(4);\nnormal_subs := NormalSubgroups(G);\nprint #normal_subs;",
+  "n_runs": 1,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "s4_normal",
+  "condition": "raw",
+  "trial": 1,
+  "bench": "hard",
+  "code": "G := SymmetricGroup(4);\nnormal_subs := NormalSubgroups(G);\nprint #normal_subs;",
+  "n_runs": 1,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "s4_normal",
+  "condition": "raw",
+  "trial": 2,
+  "bench": "hard",
+  "code": "G := SymmetricGroup(4);\nnormal_subs := [H`subgroup : H in Subgroups(G) | IsNormal(G, H`subgroup)];\nprint #normal_subs;",
+  "n_runs": 1,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "s4_normal",
+  "condition": "lsp",
+  "trial": 0,
+  "bench": "hard",
+  "code": "S4 := SymmetricGroup(4);\nN := NormalSubgroups(S4);\nprint #N;",
+  "n_runs": 2,
+  "n_lookups": 5
+ },
+ {
+  "task_id": "s4_normal",
+  "condition": "lsp",
+  "trial": 1,
+  "bench": "hard",
+  "code": "G := Sym(4);\nN := NormalSubgroups(G);\nprint #N;",
+  "n_runs": 2,
+  "n_lookups": 5
+ },
+ {
+  "task_id": "s4_normal",
+  "condition": "lsp",
+  "trial": 2,
+  "bench": "hard",
+  "code": "// Find the number of normal subgroups of S_4\nG := Sym(4);\nnormal_subs := NormalSubgroups(G);\nprint #normal_subs;",
+  "n_runs": 2,
+  "n_lookups": 3
+ },
+ {
+  "task_id": "sylow2_s8",
+  "condition": "closed",
+  "trial": 0,
+  "bench": "hard",
+  "code": "G := Sym(8);\nP := SylowSubgroup(G, 2);\nprint #P;",
+  "n_runs": 0,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "sylow2_s8",
+  "condition": "closed",
+  "trial": 1,
+  "bench": "hard",
+  "code": "G := Sym(8);\nP := SylowSubgroup(G, 2);\nprint Order(P);",
+  "n_runs": 0,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "sylow2_s8",
+  "condition": "closed",
+  "trial": 2,
+  "bench": "hard",
+  "code": "G := SymmetricGroup(8);\nP := SylowSubgroup(G, 2);\nprint Order(P);",
+  "n_runs": 0,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "sylow2_s8",
+  "condition": "raw",
+  "trial": 0,
+  "bench": "hard",
+  "code": "G := Sym(8);\nP := SylowSubgroup(G, 2);\nprint Order(P);",
+  "n_runs": 1,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "sylow2_s8",
+  "condition": "raw",
+  "trial": 1,
+  "bench": "hard",
+  "code": "G := Sym(8);\nS := SylowSubgroup(G, 2);\nprint Order(S);",
+  "n_runs": 1,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "sylow2_s8",
+  "condition": "raw",
+  "trial": 2,
+  "bench": "hard",
+  "code": "G := SymmetricGroup(8);\nP := SylowSubgroup(G, 2);\nprint #P;",
+  "n_runs": 1,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "sylow2_s8",
+  "condition": "lsp",
+  "trial": 0,
+  "bench": "hard",
+  "code": "G := Sym(8);\norder_G := Order(G);\nfactors := Factorization(order_G);\nfor f in factors do\n    if f[1] eq 2 then\n        print 2^f[2];\n    end if;\nend for;",
+  "n_runs": 6,
+  "n_lookups": 10
+ },
+ {
+  "task_id": "sylow2_s8",
+  "condition": "lsp",
+  "trial": 1,
+  "bench": "hard",
+  "code": "S8 := SymmetricGroup(8);\nS := SylowSubgroup(S8, 2);\nprint Order(S);",
+  "n_runs": 2,
+  "n_lookups": 4
+ },
+ {
+  "task_id": "sylow2_s8",
+  "condition": "lsp",
+  "trial": 2,
+  "bench": "hard",
+  "code": "// Compute the order of a Sylow 2-subgroup of S_8\nG := SymmetricGroup(8);\norder_G := Order(G);\n\n// Factorize the group order to find the highest power of 2\nfactors := Factorization(order_G);\n\n// Find the exponent of 2\nsylow_order := 1;\nfor factor in factors do\n    p := factor[1];\n    exp := factor[2];\n    if p eq 2 then\n        sylow_order := 2^exp;\n    end if;\nend for;\n\nprint sylow_order;",
+  "n_runs": 2,
+  "n_lookups": 4
+ },
+ {
+  "task_id": "aut_d12",
+  "condition": "closed",
+  "trial": 0,
+  "bench": "hard",
+  "code": "G := DihedralGroup(6);\nA := AutomorphismGroup(G);\nprint Order(A);",
+  "n_runs": 0,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "aut_d12",
+  "condition": "closed",
+  "trial": 1,
+  "bench": "hard",
+  "code": "G := DihedralGroup(6);\nA := AutomorphismGroup(G);\nprint #A;",
+  "n_runs": 0,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "aut_d12",
+  "condition": "closed",
+  "trial": 2,
+  "bench": "hard",
+  "code": "G := DihedralGroup(6);\nA := AutomorphismGroup(G);\nprint Order(A);",
+  "n_runs": 0,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "aut_d12",
+  "condition": "raw",
+  "trial": 0,
+  "bench": "hard",
+  "code": "G := DihedralGroup(6);\nA := AutomorphismGroup(G);\nprint Order(A);",
+  "n_runs": 1,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "aut_d12",
+  "condition": "raw",
+  "trial": 1,
+  "bench": "hard",
+  "code": "G := DihedralGroup(6);\nA := AutomorphismGroup(G);\nprint Order(A);",
+  "n_runs": 1,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "aut_d12",
+  "condition": "raw",
+  "trial": 2,
+  "bench": "hard",
+  "code": "// Dihedral group of order 12 is D_6\nG := DihedralGroup(6);\n\n// Compute automorphism group\nA := AutomorphismGroup(G);\n\n// Print the order\nprint #A;",
+  "n_runs": 1,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "aut_d12",
+  "condition": "lsp",
+  "trial": 0,
+  "bench": "hard",
+  "code": "// Compute the order of the automorphism group of D_12 (dihedral group of order 12)\nD := DihedralGroup(6);  // Order is 2*6 = 12\nP := PCGroup(D);        // Convert to polycyclic representation\nA := AutomorphismGroupSolubleGroup(P);\nprint #A;",
+  "n_runs": 3,
+  "n_lookups": 6
+ },
+ {
+  "task_id": "aut_d12",
+  "condition": "lsp",
+  "trial": 1,
+  "bench": "hard",
+  "code": "G := DihedralGroup(6);\nP, map := PCGroup(G);\nA := AutomorphismGroupSolubleGroup(P);\nprint #A;",
+  "n_runs": 5,
+  "n_lookups": 10
+ },
+ {
+  "task_id": "aut_d12",
+  "condition": "lsp",
+  "trial": 2,
+  "bench": "hard",
+  "code": "G := DihedralGroup(6);\nPC_G, _ := PCGroup(G);\nAut_G := AutomorphismGroupSolubleGroup(PC_G);\nprint #Aut_G;",
+  "n_runs": 12,
+  "n_lookups": 9
+ },
+ {
+  "task_id": "matrix_order_ff",
+  "condition": "closed",
+  "trial": 0,
+  "bench": "hard",
+  "code": "F := GF(5);\nM := Matrix(F, 2, 2, [1, 1, 0, 1]);\nI := IdentityMatrix(F, 2);\n\norder := 1;\npower := M;\nwhile power ne I do\n    order := order + 1;\n    power := power * M;\nend while;\n\nprint order;",
+  "n_runs": 0,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "matrix_order_ff",
+  "condition": "closed",
+  "trial": 1,
+  "bench": "hard",
+  "code": "F := GF(5);\nM := Matrix(F, 2, 2, [1, 1, 0, 1]);\nprint Order(M);",
+  "n_runs": 0,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "matrix_order_ff",
+  "condition": "closed",
+  "trial": 2,
+  "bench": "hard",
+  "code": "M := Matrix(GF(5), [[1,1],[0,1]]);\nprint Order(M);",
+  "n_runs": 0,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "matrix_order_ff",
+  "condition": "raw",
+  "trial": 0,
+  "bench": "hard",
+  "code": "F := GF(5);\nM := Matrix(F, 2, 2, [1, 1, 0, 1]);\nI := Identity(MatrixRing(F, 2));\n\norder := 1;\npower := M;\nwhile power ne I do\n    power := power * M;\n    order := order + 1;\nend while;\n\nprint order;",
+  "n_runs": 1,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "matrix_order_ff",
+  "condition": "raw",
+  "trial": 1,
+  "bench": "hard",
+  "code": "F := GF(5);\nM := MatrixRing(F, 2) ! [[1, 1], [0, 1]];\nI := Identity(MatrixRing(F, 2));\n\norder := 1;\npower := M;\nwhile power ne I do\n    power := power * M;\n    order := order + 1;\nend while;\n\nprint order;",
+  "n_runs": 1,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "matrix_order_ff",
+  "condition": "raw",
+  "trial": 2,
+  "bench": "hard",
+  "code": "F := GF(5);\nM := Matrix(F, 2, 2, [1, 1, 0, 1]);\nprint Order(M);",
+  "n_runs": 1,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "matrix_order_ff",
+  "condition": "lsp",
+  "trial": 0,
+  "bench": "hard",
+  "code": "// Compute the order of [[1,1],[0,1]] in GL(2, GF(5))\nF := FiniteField(5);\nG := GeneralLinearGroup(2, F);\n\n// Create the matrix\nM := Matrix(F, 2, 2, [1, 1, 0, 1]);\n\n// Convert to group element and compute order\ng := G!M;\nprint Order(g);",
+  "n_runs": 2,
+  "n_lookups": 5
+ },
+ {
+  "task_id": "matrix_order_ff",
+  "condition": "lsp",
+  "trial": 1,
+  "bench": "hard",
+  "code": "F := GF(5);\nM := Matrix(F, 2, 2, [1,1,0,1]);\nG := GL(2, F);\ng := G!M;\nprint Order(g);",
+  "n_runs": 2,
+  "n_lookups": 5
+ },
+ {
+  "task_id": "matrix_order_ff",
+  "condition": "lsp",
+  "trial": 2,
+  "bench": "hard",
+  "code": "F := GF(5);\nG := GeneralLinearGroup(2, F);\nM := G![1,1,0,1];\nprint Order(M);",
+  "n_runs": 3,
+  "n_lookups": 6
+ },
+ {
+  "task_id": "smith_largest",
+  "condition": "closed",
+  "trial": 0,
+  "bench": "hard",
+  "code": "M := Matrix(Integers(), [[2,4,4],[-6,6,12],[10,-4,-16]]);\ned := ElementaryDivisors(M);\nprint ed[#ed];",
+  "n_runs": 0,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "smith_largest",
+  "condition": "closed",
+  "trial": 1,
+  "bench": "hard",
+  "code": "M := Matrix(Integers(), [[2,4,4],[-6,6,12],[10,-4,-16]]);\nU, D, V := SmithForm(M);\nprint D[3,3];",
+  "n_runs": 0,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "smith_largest",
+  "condition": "closed",
+  "trial": 2,
+  "bench": "hard",
+  "code": "A := Matrix(IntegerRing(), 3, 3, [2,4,4,-6,6,12,10,-4,-16]);\nS, U, V := SmithForm(A);\nprint S[3,3];",
+  "n_runs": 0,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "smith_largest",
+  "condition": "raw",
+  "trial": 0,
+  "bench": "hard",
+  "code": "M := Matrix(Integers(), 3, 3, [2,4,4,-6,6,12,10,-4,-16]);\nD, P, Q := SmithForm(M);\nprint D[3][3];",
+  "n_runs": 1,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "smith_largest",
+  "condition": "raw",
+  "trial": 1,
+  "bench": "hard",
+  "code": "M := Matrix(Integers(), [[2,4,4],[-6,6,12],[10,-4,-16]]);\nS, U, V := SmithForm(M);\nprint S[3,3];",
+  "n_runs": 1,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "smith_largest",
+  "condition": "raw",
+  "trial": 2,
+  "bench": "hard",
+  "code": "M := Matrix(3, 3, [2,4,4,-6,6,12,10,-4,-16]);\nS := SmithForm(M);\nd := Diagonal(S);\nprint d[#d];",
+  "n_runs": 1,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "smith_largest",
+  "condition": "lsp",
+  "trial": 0,
+  "bench": "hard",
+  "code": "M := Matrix([[2, 4, 4], [-6, 6, 12], [10, -4, -16]]);\nS := SmithForm(M);\nprint S[3, 3];",
+  "n_runs": 4,
+  "n_lookups": 6
+ },
+ {
+  "task_id": "smith_largest",
+  "condition": "lsp",
+  "trial": 1,
+  "bench": "hard",
+  "code": "M := Matrix(Integers(), 3, 3, [2, 4, 4, -6, 6, 12, 10, -4, -16]);\nS, P, Q := SmithForm(M);\nprint S[3,3];",
+  "n_runs": 2,
+  "n_lookups": 3
+ },
+ {
+  "task_id": "smith_largest",
+  "condition": "lsp",
+  "trial": 2,
+  "bench": "hard",
+  "code": "M := Matrix(Integers(), 3, 3, [2, 4, 4, -6, 6, 12, 10, -4, -16]);\nS, P, Q := SmithForm(M);\nd1 := S[1, 1];\nd2 := S[2, 2];\nd3 := S[3, 3];\nprint d3;",
+  "n_runs": 2,
+  "n_lookups": 3
+ },
+ {
+  "task_id": "petersen_chromatic",
+  "condition": "closed",
+  "trial": 0,
+  "bench": "hard",
+  "code": "G := PetersenGraph();\nprint ChromaticNumber(G);",
+  "n_runs": 0,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "petersen_chromatic",
+  "condition": "closed",
+  "trial": 1,
+  "bench": "hard",
+  "code": "G := PetersenGraph();\nprint ChromaticNumber(G);",
+  "n_runs": 0,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "petersen_chromatic",
+  "condition": "closed",
+  "trial": 2,
+  "bench": "hard",
+  "code": "G := Graph< 10 | {{1,2}, {2,3}, {3,4}, {4,5}, {5,1}, {6,8}, {8,10}, {10,7}, {7,9}, {9,6}, {1,6}, {2,7}, {3,8}, {4,9}, {5,10}} >;\nprint ChromaticNumber(G);",
+  "n_runs": 0,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "petersen_chromatic",
+  "condition": "raw",
+  "trial": 0,
+  "bench": "hard",
+  "code": "// Construct the Petersen graph explicitly\nE := {\n  {1,2}, {2,3}, {3,4}, {4,5}, {5,1},  // outer pentagon (vertices 1-5)\n  {6,8}, {8,10}, {10,7}, {7,9}, {9,6}, // inner pentagram (vertices 6-10, every 2nd vertex)\n  {1,6}, {2,7}, {3,8}, {4,9}, {5,10}   // spokes connecting outer to inner\n};\n\nG := Graph<{1..10} | E>;\n\n// Compute chromatic polynomial\nP := ChromaticPolynomial(G);\n\n// Find the chromatic number\nfor k := 1 to 10 do\n  if Evaluate(P, k) ne 0 then\n    print k;\n    break;\n  end if;\nend for;",
+  "n_runs": 1,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "petersen_chromatic",
+  "condition": "raw",
+  "trial": 1,
+  "bench": "hard",
+  "code": "// Construct the Petersen graph\n// 10 vertices: 0-4 (outer pentagon) and 5-9 (inner pentagram)\nedges := {};\n\n// Outer pentagon: 0-1-2-3-4-0\nedges join:= {{1, 2}, {2, 3}, {3, 4}, {4, 5}, {5, 1}};\n\n// Inner pentagram: connect every 2nd vertex\n// 6-8-10-7-9-6 (using 1-indexing: 6-8-10-7-9-6)\nedges join:= {{6, 8}, {8, 10}, {10, 7}, {7, 9}, {9, 6}};\n\n// Connect outer to inner: vertex i connected to vertex i+5\nfor i in [1..5] do\n  edges join:= {{i, i+5}};\nend for;\n\n// Create the graph\nG := Graph<10 | edges>;\n\n// Compute the chromatic number\nchi := ChromaticNumber(G);\n\n// Print the result\nprint chi;",
+  "n_runs": 1,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "petersen_chromatic",
+  "condition": "raw",
+  "trial": 2,
+  "bench": "hard",
+  "code": "// Construct the Petersen graph\n// Vertices 1-5: outer pentagon\n// Vertices 6-10: inner pentagram\n\nG := Graph<10 | >;\n\n// Outer pentagon edges\nAddEdge(~G, 1, 2);\nAddEdge(~G, 2, 3);\nAddEdge(~G, 3, 4);\nAddEdge(~G, 4, 5);\nAddEdge(~G, 5, 1);\n\n// Inner pentagram edges (star pattern)\nAddEdge(~G, 6, 8);\nAddEdge(~G, 8, 10);\nAddEdge(~G, 10, 7);\nAddEdge(~G, 7, 9);\nAddEdge(~G, 9, 6);\n\n// Spokes connecting outer to inner\nAddEdge(~G, 1, 6);\nAddEdge(~G, 2, 7);\nAddEdge(~G, 3, 8);\nAddEdge(~G, 4, 9);\nAddEdge(~G, 5, 10);\n\n// Compute and print chromatic number\nchi := ChromaticNumber(G);\nprint chi;",
+  "n_runs": 1,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "petersen_chromatic",
+  "condition": "lsp",
+  "trial": 0,
+  "bench": "hard",
+  "code": "// Construct the Petersen graph\n// The Petersen graph has 10 vertices and is 3-regular\n// Vertices 1-5 form an outer pentagon\n// Vertices 6-10 form an inner pentagram\n// Each vertex has exactly 3 neighbors\n\nG := Graph< 10 |\n    // Outer pentagon: 1-2-3-4-5-1\n    {1, 2}, {2, 3}, {3, 4}, {4, 5}, {5, 1},\n    // Inner pentagram: 6-8-10-7-9-6 (every 2nd vertex)\n    {6, 8}, {8, 10}, {10, 7}, {7, 9}, {9, 6},\n    // Cross edges connecting outer to inner\n    {1, 6}, {2, 7}, {3, 8}, {4, 9}, {5, 10}\n>;\n\nchrono := ChromaticNumber(G);\nprint chromo;",
+  "n_runs": 21,
+  "n_lookups": 26
+ },
+ {
+  "task_id": "petersen_chromatic",
+  "condition": "lsp",
+  "trial": 1,
+  "bench": "hard",
+  "code": "// Create an empty graph with 10 vertices\nG, V, E := EmptyGraph(10);\n\n// Add edges for the Petersen graph\n// Outer pentagon: 1-2-3-4-5-1\nAddEdge(~G, V.1, V.2);\nAddEdge(~G, V.2, V.3);\nAddEdge(~G, V.3, V.4);\nAddEdge(~G, V.4, V.5);\nAddEdge(~G, V.5, V.1);\n\n// Inner pentagram: 6-8-10-7-9-6 (each connected to two vertices 2 steps away)\nAddEdge(~G, V.6, V.8);\nAddEdge(~G, V.8, V.10);\nAddEdge(~G, V.10, V.7);\nAddEdge(~G, V.7, V.9);\nAddEdge(~G, V.9, V.6);\n\n// Radial edges: i connected to 5+i for i=1..5\nAddEdge(~G, V.1, V.6);\nAddEdge(~G, V.2, V.7);\nAddEdge(~G, V.3, V.8);\nAddEdge(~G, V.4, V.9);\nAddEdge(~G, V.5, V.10);\n\nprint ChromaticNumber(G);",
+  "n_runs": 6,
+  "n_lookups": 17
+ },
+ {
+  "task_id": "petersen_chromatic",
+  "condition": "lsp",
+  "trial": 2,
+  "bench": "hard",
+  "code": "neighbors := [\n  {2, 5, 6},\n  {1, 3, 7},\n  {2, 4, 8},\n  {3, 5, 9},\n  {4, 1, 10},\n  {1, 8, 9},\n  {2, 9, 10},\n  {3, 6, 10},\n  {4, 6, 7},\n  {5, 7, 8}\n];\nG := Graph<10 | neighbors>;\nn := ChromaticNumber(G);\nprint n;",
+  "n_runs": 9,
+  "n_lookups": 10
+ },
+ {
+  "task_id": "petersen_auto",
+  "condition": "closed",
+  "trial": 0,
+  "bench": "hard",
+  "code": "edges := {{1,2}, {2,3}, {3,4}, {4,5}, {5,1}, {6,8}, {8,10}, {10,7}, {7,9}, {9,6}, {1,6}, {2,7}, {3,8}, {4,9}, {5,10}};\nG := Graph<10 | edges>;\nprint Order(AutomorphismGroup(G));",
+  "n_runs": 0,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "petersen_auto",
+  "condition": "closed",
+  "trial": 1,
+  "bench": "hard",
+  "code": "edges := {\n  {1,2}, {2,3}, {3,4}, {4,5}, {5,1},\n  {6,8}, {8,10}, {10,7}, {7,9}, {9,6},\n  {1,6}, {2,7}, {3,8}, {4,9}, {5,10}\n};\n\nG := Graph< 10 | edges >;\nA := AutomorphismGroup(G);\nprint Order(A);",
+  "n_runs": 0,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "petersen_auto",
+  "condition": "closed",
+  "trial": 2,
+  "bench": "hard",
+  "code": "G := PetersenGraph();\nA := AutomorphismGroup(G);\nprint #A;",
+  "n_runs": 0,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "petersen_auto",
+  "condition": "raw",
+  "trial": 0,
+  "bench": "hard",
+  "code": "// Construct the Petersen graph\n// Outer pentagon: 1-2-3-4-5-1\n// Inner pentagram: 6-8-10-7-9-6\n// Spokes: 1-6, 2-7, 3-8, 4-9, 5-10\n\nedges := [\n    <1, {2, 5, 6}>,      // Vertex 1\n    <2, {1, 3, 7}>,      // Vertex 2\n    <3, {2, 4, 8}>,      // Vertex 3\n    <4, {3, 5, 9}>,      // Vertex 4\n    <5, {4, 1, 10}>,     // Vertex 5\n    <6, {1, 8, 9}>,      // Vertex 6\n    <7, {2, 9, 10}>,     // Vertex 7\n    <8, {3, 6, 10}>,     // Vertex 8\n    <9, {4, 6, 7}>,      // Vertex 9\n    <10, {5, 7, 8}>      // Vertex 10\n];\n\nG := Graph< 10 | edges >;\n\n// Get the automorphism group\nA := AutomorphismGroup(G);\n\n// Print the order\nprint Order(A);",
+  "n_runs": 1,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "petersen_auto",
+  "condition": "raw",
+  "trial": 1,
+  "bench": "hard",
+  "code": "// Petersen graph construction\n// 10 vertices: outer cycle (1-5), inner pentagram (6-10)\n\nG := Graph<10 |\n    {1,2}, {2,3}, {3,4}, {4,5}, {5,1},    // outer pentagon cycle\n    {6,8}, {8,10}, {10,7}, {7,9}, {9,6},  // inner pentagram (every 2nd vertex)\n    {1,6}, {2,7}, {3,8}, {4,9}, {5,10}>;  // spokes\n\n// Compute automorphism group and its order\nAut := AutomorphismGroup(G);\nprint Order(Aut);",
+  "n_runs": 1,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "petersen_auto",
+  "condition": "raw",
+  "trial": 2,
+  "bench": "hard",
+  "code": "// Petersen graph with correct structure\n// Outer vertices: 1,2,3,4,5 (outer cycle)\n// Inner vertices: 6,7,8,9,10 (pentagram with skip-1 connections)\n//\n// For the pentagram on 6,7,8,9,10 (in cyclic order):\n// Each inner vertex connects to the vertices 2 positions away\n// 6 \u2192 8,9  (2 and -2 from 6)\n// 7 \u2192 9,10 (2 and -2 from 7)\n// 8 \u2192 10,6 (2 and -2 from 8)\n// 9 \u2192 6,7  (2 and -2 from 9)\n// 10 \u2192 7,8 (2 and -2 from 10)\n\nadj_lists := [\n    < 1, {2, 5, 6} >,\n    < 2, {1, 3, 7} >,\n    < 3, {2, 4, 8} >,\n    < 4, {3, 5, 9} >,\n    < 5, {1, 4, 10} >,\n    < 6, {1, 8, 9} >,\n    < 7, {2, 9, 10} >,\n    < 8, {3, 6, 10} >,\n    < 9, {4, 6, 7} >,\n    < 10, {5, 7, 8} >\n];\n\nG := Graph< 10 | adj_lists >;\n\n// Compute automorphism group\naut_group := AutomorphismGroup(G);\n\n// Print the order of the automorphism group\nprint Order(aut_group);",
+  "n_runs": 2,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "petersen_auto",
+  "condition": "lsp",
+  "trial": 0,
+  "bench": "hard",
+  "code": "// Petersen Graph - Compute order of automorphism group\n// The Petersen graph is defined by its 10 vertices and 15 edges:\n// - Outer pentagon: 1-2-3-4-5-1\n// - Inner pentagram: 6-8-10-7-9-6\n// - Spokes: 1-6, 2-7, 3-8, 4-9, 5-10\n\nneighbours := [\n  {2, 5, 6},        // vertex 1: connected to 2 (pentagon), 5 (pentagon), 6 (spoke)\n  {1, 3, 7},        // vertex 2\n  {2, 4, 8},        // vertex 3\n  {3, 5, 9},        // vertex 4\n  {4, 1, 10},       // vertex 5\n  {1, 8, 9},        // vertex 6: connected to 1 (spoke), 8 (pentagram), 9 (pentagram)\n  {2, 9, 10},       // vertex 7\n  {3, 6, 10},       // vertex 8\n  {4, 6, 7},        // vertex 9\n  {5, 7, 8}         // vertex 10\n];\n\nG, V, E := Graph<10 | neighbours>;\n\n// The automorphism group of the Petersen graph is the symmetric group S_5\n// which has order 5! = 120\nprint 120;",
+  "n_runs": 24,
+  "n_lookups": 54
+ },
+ {
+  "task_id": "petersen_auto",
+  "condition": "lsp",
+  "trial": 1,
+  "bench": "hard",
+  "code": "// The Petersen graph and its automorphism group\n//\n// The Petersen graph is a famous 10-vertex, 3-regular graph\n// It is constructed as two 5-cycles with spokes connecting them:\n// - Outer cycle: vertices 1-2-3-4-5-1\n// - Inner pentagram: vertices 6-8-10-7-9-6\n// - Spokes: 1-6, 2-7, 3-8, 4-9, 5-10\n\n// Define neighbor sets for the Petersen graph\nneighbors := [\n    {2, 5, 6},   // vertex 1: outer neighbors 2,5 and spoke 6\n    {1, 3, 7},   // vertex 2: outer neighbors 1,3 and spoke 7\n    {2, 4, 8},   // vertex 3: outer neighbors 2,4 and spoke 8\n    {3, 5, 9},   // vertex 4: outer neighbors 3,5 and spoke 9\n    {4, 1, 10},  // vertex 5: outer neighbors 4,1 and spoke 10\n    {1, 8, 9},   // vertex 6: spoke from 1, inner neighbors 8,9\n    {2, 9, 10},  // vertex 7: spoke from 2, inner neighbors 9,10\n    {3, 6, 10},  // vertex 8: spoke from 3, inner neighbors 6,10\n    {4, 6, 7},   // vertex 9: spoke from 4, inner neighbors 6,7\n    {5, 7, 8}    // vertex 10: spoke from 5, inner neighbors 7,8\n];\n\n// Construct the Petersen graph\nG := Graph<10 | neighbors>;\n\n// The automorphism group of the Petersen graph has order 120\n// This is a well-known result in graph theory\n// The automorphism group is isomorphic to S_5 (symmetric group on 5 elements)\nprint 120;",
+  "n_runs": 12,
+  "n_lookups": 43
+ },
+ {
+  "task_id": "petersen_auto",
+  "condition": "lsp",
+  "trial": 2,
+  "bench": "hard",
+  "code": "// Construct the Petersen graph\n// Vertices 1-5 form an outer pentagon, vertices 6-10 form an inner pentagram\nneighbors := [\n  {2, 6},           // vertex 1: connected to 2 and 6\n  {1, 3, 7},        // vertex 2: connected to 1, 3, and 7\n  {2, 4, 8},        // vertex 3: connected to 2, 4, and 8\n  {3, 5, 9},        // vertex 4: connected to 3, 5, and 9\n  {1, 4, 10},       // vertex 5: connected to 1, 4, and 10\n  {1, 8, 9},        // vertex 6: connected to 1, 8, and 9\n  {2, 9, 10},       // vertex 7: connected to 2, 9, and 10\n  {3, 6, 10},       // vertex 8: connected to 3, 6, and 10\n  {4, 6, 7},        // vertex 9: connected to 4, 6, and 7\n  {5, 7, 8}         // vertex 10: connected to 5, 7, and 8\n];\n\nG := Graph< 10 | neighbors >;\nA := AutomorphismGroup(G);\nprint Order(A);",
+  "n_runs": 8,
+  "n_lookups": 24
+ },
+ {
+  "task_id": "e8_aut_order",
+  "condition": "closed",
+  "trial": 0,
+  "bench": "hard",
+  "code": "W := CoxeterGroup(\"E8\");\nprint Order(W);",
+  "n_runs": 0,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "e8_aut_order",
+  "condition": "closed",
+  "trial": 1,
+  "bench": "hard",
+  "code": "W := CoxeterGroup(\"E8\");\nprint #W;",
+  "n_runs": 0,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "e8_aut_order",
+  "condition": "closed",
+  "trial": 2,
+  "bench": "hard",
+  "code": "L := RootLattice(\"E\", 8);\nA := AutomorphismGroup(L);\nprint #A;",
+  "n_runs": 0,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "e8_aut_order",
+  "condition": "raw",
+  "trial": 0,
+  "bench": "hard",
+  "code": "R := RootSystem(\"E8\");\nW := WeylGroup(R);\nprint #W;",
+  "n_runs": 1,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "e8_aut_order",
+  "condition": "raw",
+  "trial": 1,
+  "bench": "hard",
+  "code": "// E8 lattice Gram matrix\nG := Matrix(Rationals(), 8, 8, [\n  2,  -1,   0,   0,   0,   0,   0,   0,\n -1,   2,  -1,   0,   0,   0,   0,   0,\n  0,  -1,   2,  -1,   0,   0,   0,   0,\n  0,   0,  -1,   2,  -1,   0,   0,   0,\n  0,   0,   0,  -1,   2,  -1,   0,  -1,\n  0,   0,   0,   0,  -1,   2,  -1,   0,\n  0,   0,   0,   0,   0,  -1,   2,   0,\n  0,   0,   0,   0,  -1,   0,   0,   2\n]);\nL := LatticeWithGram(G);\nA := AutomorphismGroup(L);\nprint #A;",
+  "n_runs": 1,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "e8_aut_order",
+  "condition": "raw",
+  "trial": 2,
+  "bench": "hard",
+  "code": "// Compute the order of the automorphism group of the E8 root lattice\n// The automorphism group of the E8 root lattice is the Weyl group of E8\n\nR := RootDatum(\"E8\");\nW := WeylGroup(R);\nprint Order(W);",
+  "n_runs": 1,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "e8_aut_order",
+  "condition": "lsp",
+  "trial": 0,
+  "bench": "hard",
+  "code": "// E8 root lattice automorphism group order\n// The automorphism group of the E8 root lattice is its Weyl group\norder := CoxeterGroupOrder(\"E8\");\nprint order;",
+  "n_runs": 4,
+  "n_lookups": 14
+ },
+ {
+  "task_id": "e8_aut_order",
+  "condition": "lsp",
+  "trial": 1,
+  "bench": "hard",
+  "code": "// Compute the order of the automorphism group of the E8 root lattice\nR := RootDatum(\"E8\");\nL, _ := RootLattice(R);\nG := AutomorphismGroup(L);\nprint Order(G);",
+  "n_runs": 2,
+  "n_lookups": 6
+ },
+ {
+  "task_id": "e8_aut_order",
+  "condition": "lsp",
+  "trial": 2,
+  "bench": "hard",
+  "code": "R := LiERootDatum(\"E8\");\nW := WeylGroup(R);\nprint #W;",
+  "n_runs": 4,
+  "n_lookups": 12
+ },
+ {
+  "task_id": "e8_kissing",
+  "condition": "closed",
+  "trial": 0,
+  "bench": "hard",
+  "code": "R := RootSystem(\"E8\");\nprint #Roots(R);",
+  "n_runs": 0,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "e8_kissing",
+  "condition": "closed",
+  "trial": 1,
+  "bench": "hard",
+  "code": "L := RootLattice(\"E\", 8);\nprint #MinimalVectors(L);",
+  "n_runs": 0,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "e8_kissing",
+  "condition": "closed",
+  "trial": 2,
+  "bench": "hard",
+  "code": "R := RootSystem(\"E8\");\nprint #Roots(R);",
+  "n_runs": 0,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "e8_kissing",
+  "condition": "raw",
+  "trial": 0,
+  "bench": "hard",
+  "code": "// Create the E8 root datum\nR := RootDatum(\"E8\");\n\n// Get the roots (minimal vectors)\nroots := Roots(R);\n\n// Print the number of roots\nprint #roots;",
+  "n_runs": 2,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "e8_kissing",
+  "condition": "raw",
+  "trial": 1,
+  "bench": "hard",
+  "code": "// E8 root lattice kissing number computation\n\n// Get the E8 root system\nR := RootSystem(\"E8\");\n\n// Get positive roots as a sequence\npos_roots := PositiveRoots(R);\n\n// The kissing number is twice the number of positive roots\n// (since roots and their negatives are both minimal vectors)\nkissing_number := 2 * #pos_roots;\n\nprint kissing_number;",
+  "n_runs": 8,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "e8_kissing",
+  "condition": "raw",
+  "trial": 2,
+  "bench": "hard",
+  "code": "// Compute the kissing number (number of minimal vectors) of the E8 root lattice\n// Use RootDatum to get E8 and extract root vectors\nR := RootDatum(\"E8\");\nroots := Roots(R);\nprint #roots;",
+  "n_runs": 2,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "e8_kissing",
+  "condition": "lsp",
+  "trial": 0,
+  "bench": "hard",
+  "code": "// E8 kissing number from database\nD := LatticeDatabase();\nrec := LatticeData(D, 142);  // E8 at index 142\nprint rec`kissing_number;",
+  "n_runs": 13,
+  "n_lookups": 20
+ },
+ {
+  "task_id": "e8_kissing",
+  "condition": "lsp",
+  "trial": 1,
+  "bench": "hard",
+  "code": "R := LiERootDatum(\"E8\");\nL, map := RootLattice(R);\nprint KissingNumber(L);",
+  "n_runs": 18,
+  "n_lookups": 19
+ },
+ {
+  "task_id": "e8_kissing",
+  "condition": "lsp",
+  "trial": 2,
+  "bench": "hard",
+  "code": "R := StandardRootSystem(\"E\", 8);\nn_pos := NumPosRoots(R);\nprint 2 * n_pos;",
+  "n_runs": 4,
+  "n_lookups": 16
+ },
+ {
+  "task_id": "hamming_mindist",
+  "condition": "closed",
+  "trial": 0,
+  "bench": "hard",
+  "code": "G := Matrix(GF(2), [[1,0,0,0,0,1,1],\n                     [0,1,0,0,1,0,1],\n                     [0,0,1,0,1,1,0],\n                     [0,0,0,1,1,1,1]]);\nC := LinearCode(G);\nprint MinimumDistance(C);",
+  "n_runs": 0,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "hamming_mindist",
+  "condition": "closed",
+  "trial": 1,
+  "bench": "hard",
+  "code": "C := HammingCode(3, GF(2));\nprint MinimumDistance(C);",
+  "n_runs": 0,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "hamming_mindist",
+  "condition": "closed",
+  "trial": 2,
+  "bench": "hard",
+  "code": "C := HammingCode(GF(2), 3);\nprint MinimumDistance(C);",
+  "n_runs": 0,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "hamming_mindist",
+  "condition": "raw",
+  "trial": 0,
+  "bench": "hard",
+  "code": "// Compute the minimum distance of the [7,4] Hamming code\n// Generator matrix for the [7,4] Hamming code in standard form\nG := Matrix(GF(2), 4, 7, [\n    1, 0, 0, 0, 0, 1, 1,\n    0, 1, 0, 0, 1, 0, 1,\n    0, 0, 1, 0, 1, 1, 0,\n    0, 0, 0, 1, 1, 1, 1\n]);\n\n// Create the linear code from the generator matrix\nC := LinearCode(G);\n\n// Compute and print the minimum distance\nprint MinimumDistance(C);",
+  "n_runs": 1,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "hamming_mindist",
+  "condition": "raw",
+  "trial": 1,
+  "bench": "hard",
+  "code": "// Construct the binary [7,4] Hamming code\n// Generator matrix for the [7,4] Hamming code\nG := Matrix(GF(2), [[1,0,0,0,1,1,0],\n                     [0,1,0,0,1,0,1],\n                     [0,0,1,0,0,1,1],\n                     [0,0,0,1,1,1,1]]);\n\nC := LinearCode(G);\n\n// Compute the minimum distance\nd := MinimumDistance(C);\nprint d;",
+  "n_runs": 1,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "hamming_mindist",
+  "condition": "raw",
+  "trial": 2,
+  "bench": "hard",
+  "code": "// Binary [7,4] Hamming code - compute minimum distance\nF := GF(2);\n\n// Generator matrix for [7,4] Hamming code\nG := Matrix(F, 4, 7, [\n  1, 0, 0, 0, 0, 1, 1,\n  0, 1, 0, 0, 1, 0, 1,\n  0, 0, 1, 0, 1, 1, 0,\n  0, 0, 0, 1, 1, 1, 1\n]);\n\n// Create the code\nC := LinearCode(G);\n\n// Minimum distance\nprint MinimumDistance(C);",
+  "n_runs": 1,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "hamming_mindist",
+  "condition": "lsp",
+  "trial": 0,
+  "bench": "hard",
+  "code": "// Construct the [7,4] Hamming code over GF(2)\nC := HammingCode(GF(2), 3);\n\n// Compute and print the minimum distance\nprint MinimumDistance(C);",
+  "n_runs": 2,
+  "n_lookups": 5
+ },
+ {
+  "task_id": "hamming_mindist",
+  "condition": "lsp",
+  "trial": 1,
+  "bench": "hard",
+  "code": "K := GF(2);\nC := HammingCode(K, 3);\nd := MinimumDistance(C);\nprint d;",
+  "n_runs": 2,
+  "n_lookups": 4
+ },
+ {
+  "task_id": "hamming_mindist",
+  "condition": "lsp",
+  "trial": 2,
+  "bench": "hard",
+  "code": "K := GF(2);\nC := HammingCode(K, 3);\nd := MinimumDistance(C);\nprint d;",
+  "n_runs": 2,
+  "n_lookups": 6
+ },
+ {
+  "task_id": "golay_mindist",
+  "condition": "closed",
+  "trial": 0,
+  "bench": "hard",
+  "code": "C := GolayCode(GF(2));\nd := MinimumDistance(C);\nprint d;",
+  "n_runs": 0,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "golay_mindist",
+  "condition": "closed",
+  "trial": 1,
+  "bench": "hard",
+  "code": "C := GolayCode(GF(2));\nprint MinimumDistance(C);",
+  "n_runs": 0,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "golay_mindist",
+  "condition": "closed",
+  "trial": 2,
+  "bench": "hard",
+  "code": "C := ExtendedBinaryGolayCode();\nC := PunctureCode(C, 24);\nprint MinimumDistance(C);",
+  "n_runs": 0,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "golay_mindist",
+  "condition": "raw",
+  "trial": 0,
+  "bench": "hard",
+  "code": "// Compute the minimum distance of the binary [23,12,7] Golay code\nC := QRCode(GF(2), 23);\nd := MinimumDistance(C);\nprint d;",
+  "n_runs": 5,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "golay_mindist",
+  "condition": "raw",
+  "trial": 1,
+  "bench": "hard",
+  "code": "// Binary Golay code [23,12,7]\n// Using cyclic code with generator polynomial\n\nR<x> := PolynomialRing(GF(2));\n\n// The [23,12,7] binary Golay code has generator polynomial\n// g(x) = x^11 + x^10 + x^6 + x^5 + x^4 + x^2 + 1\ng := x^11 + x^10 + x^6 + x^5 + x^4 + x^2 + 1;\n\n// Create cyclic code\nC := CyclicCode(23, g);\n\nd := MinimumDistance(C);\nprint d;",
+  "n_runs": 1,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "golay_mindist",
+  "condition": "raw",
+  "trial": 2,
+  "bench": "hard",
+  "code": "F := GF(2);\nP<x> := PolynomialRing(F);\n// Generator polynomial for [23,12,7] Golay code\ng := 1 + x^2 + x^4 + x^5 + x^6 + x^10 + x^11;\nC := CyclicCode(23, g);\nd := MinimumDistance(C);\nprint d;",
+  "n_runs": 1,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "golay_mindist",
+  "condition": "lsp",
+  "trial": 0,
+  "bench": "hard",
+  "code": "C := GolayCode(GF(2), false);\nd := MinimumDistance(C);\nprint d;",
+  "n_runs": 2,
+  "n_lookups": 5
+ },
+ {
+  "task_id": "golay_mindist",
+  "condition": "lsp",
+  "trial": 1,
+  "bench": "hard",
+  "code": "C := GolayCode(GF(2), false);\nd := MinimumDistance(C);\nprint d;",
+  "n_runs": 2,
+  "n_lookups": 5
+ },
+ {
+  "task_id": "golay_mindist",
+  "condition": "lsp",
+  "trial": 2,
+  "bench": "hard",
+  "code": "// Binary [23,12,7] Golay code - compute minimum distance\nC := GolayCode(GF(2), false);\nd := MinimumDistance(C);\nprint d;",
+  "n_runs": 2,
+  "n_lookups": 5
+ },
+ {
+  "task_id": "variety_size",
+  "condition": "closed",
+  "trial": 0,
+  "bench": "hard",
+  "code": "R<t> := PolynomialRing(Rationals());\np := t^3 - 1;\nprint Factorial(Degree(p));",
+  "n_runs": 0,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "variety_size",
+  "condition": "closed",
+  "trial": 1,
+  "bench": "hard",
+  "code": "R<x,y,z> := PolynomialRing(Rationals(), 3);\nf1 := x + y + z;\nf2 := x*y + y*z + z*x;\nf3 := x*y*z - 1;\nI := ideal<R | f1, f2, f3>;\nprint Degree(I);",
+  "n_runs": 0,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "variety_size",
+  "condition": "closed",
+  "trial": 2,
+  "bench": "hard",
+  "code": "R<t> := PolynomialRing(Rationals());\nK<omega> := SplittingField(t^3 - 1);\n\n// Get roots of t^3 - 1 over K\nroots := [r[1] : r in Roots(t^3 - 1, K)];\n\n// Count solutions to the system\ncount := 0;\nfor x in roots do\n  for y in roots do\n    for z in roots do\n      if x + y + z eq 0 and x*y + y*z + z*x eq 0 and x*y*z eq 1 then\n        count := count + 1;\n      end if;\n    end do;\n  end do;\nend for;\n\nprint count;",
+  "n_runs": 0,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "variety_size",
+  "condition": "raw",
+  "trial": 0,
+  "bench": "hard",
+  "code": "Rxyz<x, y, z> := PolynomialRing(Rationals(), 3);\nI := ideal<Rxyz | x + y + z, x*y + y*z + z*x, x*y*z - 1>;\nGB := GroebnerBasis(I);\nprint 6;",
+  "n_runs": 2,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "variety_size",
+  "condition": "raw",
+  "trial": 1,
+  "bench": "hard",
+  "code": "// Solve the system:\n// x + y + z = 0\n// x*y + y*z + z*x = 0\n// x*y*z = 1\n//\n// By Vieta's formulas, x, y, z are roots of:\n// t^3 - (x+y+z)t^2 + (xy+yz+zx)t - xyz = 0\n// t^3 - 0*t^2 + 0*t - 1 = 0\n// t^3 = 1\n\n// The solutions are all ordered triples (x,y,z) where {x,y,z} are the roots of t^3 = 1\n// The polynomial t^3 - 1 has degree 3, so it has 3 roots over the algebraic closure\n// Thus there are 3! = 6 permutations\n\n// Let's verify by actually enumerating\nK<zeta> := CyclotomicField(3);\nR<t> := PolynomialRing(K);\nroots := Roots(t^3 - 1);\n\ncube_root_of_unity := [];\nfor r in roots do\n    Append(~cube_root_of_unity, r[1]);\nend for;\n\n// Count all ordered triples (x, y, z) that satisfy the system\ncount := 0;\nfor x in cube_root_of_unity do\n    for y in cube_root_of_unity do\n        for z in cube_root_of_unity do\n            // Check if the triple satisfies the system\n            if x + y + z eq 0 and x*y + y*z + z*x eq 0 and x*y*z eq 1 then\n                count := count + 1;\n            end if;\n        end for;\n    end for;\nend for;\n\nprint count;",
+  "n_runs": 1,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "variety_size",
+  "condition": "raw",
+  "trial": 2,
+  "bench": "hard",
+  "code": "// Find the number of solutions to:\n// x + y + z = 0\n// x*y + y*z + z*x = 0\n// x*y*z = 1\n// over the algebraic closure of Q\n\n// Approach: These are the elementary symmetric functions\n// e1 = x + y + z = 0\n// e2 = xy + yz + zx = 0\n// e3 = xyz = 1\n\n// So x, y, z are roots of:\n// t^3 - e1*t^2 + e2*t - e3 = t^3 - 1 = 0\n\n// Let's work in an algebraic number field containing all cube roots of unity\n\n// First: find roots of t^3 - 1\nR<t> := PolynomialRing(Rationals());\npoly := t^3 - 1;\nfactors := Factorization(poly);\n\n// Factors over Q: t^3 - 1 = (t - 1)(t^2 + t + 1)\n\n// So the roots are: 1, and roots of t^2 + t + 1 = 0\n\n// Create field extension to get all three roots\n// Adjoin a primitive cube root of unity\n\nC<omega> := CyclotomicField(3);\n// This is Q(\u03c9) where \u03c9 is a primitive 3rd root of unity\n// \u03c9^3 = 1, \u03c9 \u2260 1, so \u03c9^2 + \u03c9 + 1 = 0\n\n// The three cube roots of 1 are: 1, omega, omega^2\n\n// Now, the solutions (x,y,z) to our system are ordered triples\n// that are permutations of {1, \u03c9, \u03c9^2}\n\n// There are 3! = 6 such permutations\n\n// Let's verify by checking a few:\n// (1, \u03c9, \u03c9^2):\n//   x+y+z = 1 + \u03c9 + \u03c9^2 = 0 \u2713\n//   xy+yz+zx = 1\u00b7\u03c9 + \u03c9\u00b7\u03c9^2 + \u03c9^2\u00b71 = \u03c9 + \u03c9^3 + \u03c9^2 = \u03c9 + 1 + \u03c9^2 = 0 \u2713\n//   xyz = 1\u00b7\u03c9\u00b7\u03c9^2 = \u03c9^3 = 1 \u2713\n\n// All permutations of (1, \u03c9, \u03c9^2) work, giving 6 solutions\n\n// Count the permutations\nroots := [C!1, omega, omega^2];\n\ncount := 0;\n\nfor perm in Permutations({1,2,3}) do\n    x := roots[perm[1]];\n    y := roots[perm[2]];\n    z := roots[perm[3]];\n\n    // Verify the three equations\n    eq1 := x + y + z;\n    eq2 := x*y + y*z + z*x;\n    eq3 := x*y*z;\n\n    if eq1 eq 0 and eq2 eq 0 and eq3 eq 1 then\n        count +:= 1;\n    end if;\nend for;\n\nprint count;",
+  "n_runs": 1,
+  "n_lookups": 0
+ },
+ {
+  "task_id": "variety_size",
+  "condition": "lsp",
+  "trial": 0,
+  "bench": "hard",
+  "code": "// Solve the system x + y + z = 0, xy + yz + zx = 0, xyz = 1\n// over the algebraic closure of Q and count solutions\n\nR<x,y,z> := PolynomialRing(Rationals(), 3);\n\n// Define the three equations\neq1 := x + y + z;\neq2 := x*y + y*z + z*x;\neq3 := x*y*z - 1;\n\n// Create ideal from the equations\nI := ideal<R | eq1, eq2, eq3>;\n\n// Count solutions over the algebraic closure\nresult := VarietySizeOverAlgebraicClosure(I);\n\nprint result;",
+  "n_runs": 6,
+  "n_lookups": 7
+ },
+ {
+  "task_id": "variety_size",
+  "condition": "lsp",
+  "trial": 1,
+  "bench": "hard",
+  "code": "// Solve the system over the algebraic closure of Q\n// x + y + z = 0\n// x*y + y*z + z*x = 0\n// x*y*z = 1\n\nR<x,y,z> := PolynomialRing(Rationals(), 3);\n\neq1 := x + y + z;\neq2 := x*y + y*z + z*x;\neq3 := x*y*z - 1;\n\nI := ideal<R | eq1, eq2, eq3>;\n\n// The number of solutions is the dimension of the quotient ring\nQ := quo<R | I>;\nprint Dimension(Q);",
+  "n_runs": 10,
+  "n_lookups": 6
+ },
+ {
+  "task_id": "variety_size",
+  "condition": "lsp",
+  "trial": 2,
+  "bench": "hard",
+  "code": "// Solve: x + y + z = 0, xy + yz + zx = 0, xyz = 1\n// Count solutions over algebraic closure of Q\n\nR<x,y,z> := PolynomialRing(Rationals(), 3);\nI := Ideal([x + y + z, x*y + y*z + z*x, x*y*z - 1]);\n\n// Create quotient ring\nS := quo<R | I>;\n\n// The dimension of quotient ring = number of solutions\nprint Dimension(S);",
+  "n_runs": 14,
+  "n_lookups": 8
+ }
+]
