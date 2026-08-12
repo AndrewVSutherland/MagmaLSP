@@ -30,7 +30,8 @@ def test_word_and_prefix():
 
 def test_enclosing_call_name():
     text = "x := Factorial(5, 6);\n"
-    assert srv._enclosing_call_name(text, t.Position(0, 16)) == "Factorial"
+    call = srv._enclosing_call(text, t.Position(0, 16))
+    assert call is not None and call.children[0].text == b"Factorial"
 
 
 def test_compute_diagnostics_lints_only():

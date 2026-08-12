@@ -46,7 +46,9 @@ def _html_to_text(fragment: str) -> str:
 @dataclass
 class HandbookIndex:
     html_dir: str
-    entries: dict[str, tuple[str, str]] = field(default_factory=dict)  # name -> (page, anchor)
+    # name -> [(page, anchor), ...] in ind-all order; a name may be documented in several
+    # chapters (e.g. EllipticCurve under Grossencharacters AND under its own chapter).
+    entries: dict[str, list[tuple[str, str]]] = field(default_factory=dict)
 
     @classmethod
     def load(cls, html_dir: str) -> HandbookIndex:
@@ -60,15 +62,30 @@ class HandbookIndex:
                 if len(parts) < 4 or parts[0].strip() != "5":
                     continue
                 name = _extract_name(parts[1])
-                if not name or name in idx.entries:
+                if not name:
                     continue
                 m = _ANCHOR_RE.search(parts[2])
                 if m:
-                    idx.entries[name] = (m.group(1), m.group(2))
+                    idx.entries.setdefault(name, []).append((m.group(1), m.group(2)))
         return idx
 
+    def _best_entry(self, name: str) -> tuple[str, str] | None:
+        """The intrinsic's *main* chapter entry: the page holding the most of its overloads
+        (the incidental mention in another chapter has one; its home chapter has several)."""
+        hits = self.entries.get(name)
+        if not hits:
+            return None
+        by_page: dict[str, int] = {}
+        for page, _anchor in hits:
+            by_page[page] = by_page.get(page, 0) + 1
+        best_page = max(by_page, key=lambda p: by_page[p])
+        for page, anchor in hits:
+            if page == best_page:
+                return page, anchor
+        return hits[0]
+
     def doc_markdown(self, name: str, *, max_chars: int = 1200) -> str | None:
-        hit = self.entries.get(name)
+        hit = self._best_entry(name)
         if hit is None:
             return None
         page, anchor = hit
