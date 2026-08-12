@@ -59,6 +59,28 @@ The plugin maps `.magma` (primary) and `.m` (fallback) to languageId `magma` and
 server via `uv run`. Configure via `initializationOptions` in [`.lsp.json`](.lsp.json):
 `magmaPath`, `magmaDiagnostics` (bool), `lints` (bool), `magmaTimeout` (seconds), `dbPath`.
 
+### Two front-ends, one core
+
+The plugin bundles **two** ways into the same core intelligence (`src/magma_lsp/frontend.py`):
+
+- **LSP server** ([`.lsp.json`](.lsp.json)) — for the *editor*: pushes diagnostics on edit/save,
+  plus hover, completion, go-to-definition, document/workspace symbols.
+- **MCP server** ([`.mcp.json`](.mcp.json)) — for the *agent* writing Magma. Three stdio tools
+  (auto-started with the plugin, visible in `/mcp` as `magma-lsp`):
+  - `magma_lookup(names)` — intrinsic signatures + handbook docs (confirm a call before writing it);
+  - `magma_check(code, execute=False)` — static + Magma syntax/binding diagnostics, optional run;
+  - `magma_run(code, timeout=30)` — execute in a sandboxed Magma and return the output.
+
+  These give the agent the execution loop (`run`/`check`) plus the signature DB (`lookup`) — the
+  two levers our evals identified (see [`eval/FINDINGS_3arm.md`](eval/FINDINGS_3arm.md),
+  [`eval/FINDINGS_trap.md`](eval/FINDINGS_trap.md)). The CLI ([`magma-lsp-cli`](src/magma_lsp/cli.py))
+  is the same three operations from a shell.
+
+**Execution sandbox (current):** every `run`/`check` is a fresh, hermetic Magma process under a
+wall-clock `timeout` and an in-process `SetMemoryLimit`. This suits a trial with **trusted users**;
+it does *not* yet block Magma `System(...)`/`Pipe(...)` shell-out, file writes, or network — add OS
+isolation (restricted user / cgroup / namespace) before exposing it to untrusted input.
+
 ## Develop
 
 ```bash
@@ -67,8 +89,9 @@ uv run ruff check src tests
 uv run ruff format src tests
 ```
 
-Layout: `src/magma_lsp/{db,magma,analysis}` is the framework-agnostic core; `server.py` is the
-thin pygls adapter. A later MCP front-end would be a second thin adapter over the same core.
+Layout: `src/magma_lsp/{db,magma,analysis}` is the framework-agnostic core; `frontend.py` is the
+shared agent-facing logic; `server.py` (LSP), `mcp_server.py` (MCP), and `cli.py` (shell) are the
+three thin adapters over it.
 
 ## Status
 
