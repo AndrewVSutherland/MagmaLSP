@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MagmaLSP Comprehensive Review — August 2026</title>
+<style>
+  :root {
+    --ink: #1a1d23; --muted: #5b6472; --rule: #e3e6ea; --bg: #ffffff;
+    --accent: #7a3b8f; --good: #1e7d46; --warn: #a05b12; --bad: #b02a37;
+    --chip-bg: #f4f0f7; --code-bg: #f6f7f9;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ink: #e6e8eb; --muted: #9aa3af; --rule: #33383f; --bg: #16181c;
+      --accent: #c791d6; --good: #57c07d; --warn: #ddab61; --bad: #e4717b;
+      --chip-bg: #2a2331; --code-bg: #22252a;
+    }
+  }
+  html { background: var(--bg); }
+  body {
+    margin: 0 auto; max-width: 60rem; padding: 2.5rem 1.5rem 5rem;
+    font: 16px/1.6 -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    color: var(--ink); background: var(--bg);
+  }
+  h1 { font-size: 1.9rem; line-height: 1.25; margin: 0 0 .3rem; }
+  h2 { font-size: 1.35rem; margin: 2.6rem 0 .8rem; padding-top: 1rem; border-top: 1px solid var(--rule); }
+  h3 { font-size: 1.08rem; margin: 1.6rem 0 .5rem; }
+  .sub { color: var(--muted); margin-bottom: 2rem; }
+  code, pre { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: .88em; }
+  code { background: var(--code-bg); padding: .1em .35em; border-radius: 4px; }
+  pre { background: var(--code-bg); padding: .8rem 1rem; border-radius: 8px; overflow-x: auto; line-height: 1.45; }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 1rem 0; font-size: .93rem; }
+  th, td { text-align: left; padding: .45rem .7rem; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: .85rem; text-transform: uppercase; letter-spacing: .03em; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .good { color: var(--good); font-weight: 600; }
+  .warn { color: var(--warn); font-weight: 600; }
+  .bad  { color: var(--bad);  font-weight: 600; }
+  .chip { display: inline-block; background: var(--chip-bg); color: var(--accent); border-radius: 999px;
+          padding: .05rem .6rem; font-size: .78rem; font-weight: 600; margin-right: .4rem; }
+  .callout { border-left: 4px solid var(--accent); background: var(--chip-bg); padding: .7rem 1rem; border-radius: 0 8px 8px 0; margin: 1rem 0; }
+  li { margin: .25rem 0; }
+  .fileref { color: var(--muted); font-size: .85em; }
+  .wide { overflow-x: auto; }
+</style>
+</head>
+<body>
+
+<h1>MagmaLSP: Comprehensive Review &amp; Overhaul</h1>
+<p class="sub">August 12, 2026 · branch <code>comprehensive-review</code> · reviewed at <code>0f07757</code> (post&nbsp;PR&nbsp;#11) · Magma 2.29-9, local Ryzen AI Max+ 395 box<br>
+Review method: five parallel deep-review agents (DB layer, LSP server/analysis, Magma validation backend, agent-facing front-ends, eval/validation infrastructure) + hands-on verification of every claimed defect against live Magma.</p>
+
+<h2>Executive summary</h2>
+
+<p>The foundation is genuinely good: the core-plus-thin-adapters architecture is right, the golden Magma invocation recipe is implemented faithfully, the signature-DB build pipeline survived a Magma version bump (2.29-7&nbsp;→&nbsp;2.29-9) exactly as designed, and the eval write-ups are unusually honest about their own limitations. Nothing found in this review changes the project's architecture.</p>
+
+<p>What the review found instead: <strong>the tool was mistuned for its stated audience</strong> — an LLM (especially a small one) iterating against it. The single biggest failure mode of a weak model writing Magma is a <em>plausible wrong name</em>, and lookup misses were near–dead ends (prefix suggestions only, no search-by-concept). The check pipeline crashed rather than degraded without Magma, reported a confident <code>OK</code> on timeouts, false-flagged the two most common real file shapes (<code>intrinsic</code> package files and <code>load</code>-based scripts), could be made to <em>execute code during the "safe" pass</em> via wrapper escape, and <code>run</code> reported errors at temp-file line numbers with an unbounded output that could dump 3&nbsp;MB into an agent's context. On top of that, the DB extractor had four correctness bugs that fed wrong signatures to everything downstream.</p>
+
+<p>All of the above is fixed on this branch, plus the two highest-value additions for small models: <strong>keyword search over the signature corpus</strong> and <strong>a static pitfall/arity layer</strong> that catches LLM-typical mistakes before Magma runs. Headline numbers:</p>
+
+<div class="wide"><table>
+<tr><th>Metric</th><th class="num">Before</th><th class="num">After</th></tr>
+<tr><td>Names with documentation (10,304 total)</td><td class="num">6,705 (65%)</td><td class="num good">9,860 (95.7%)</td></tr>
+<tr><td>Duplicate overload listings in DB</td><td class="num">~915</td><td class="num good">0</td></tr>
+<tr><td>Real overloads missing from DB (<code>~ref</code> merge bug, untyped args)</td><td class="num">~190</td><td class="num good">0</td></tr>
+<tr><td>Suggestions for <code>FactorInteger</code> / <code>NumPoints</code>-style misses</td><td class="num bad">none</td><td class="num good">ranked, aliased</td></tr>
+<tr><td>Search-by-concept (name unknown)</td><td class="num bad">—</td><td class="num good"><code>magma_search</code></td></tr>
+<tr><td><code>check</code> on an <code>intrinsic</code> package file</td><td class="num bad">phantom error 1:1</td><td class="num good">clean / real positions</td></tr>
+<tr><td>"Safe" syntax pass can execute code (wrapper escape)</td><td class="num bad">yes</td><td class="num good">no</td></tr>
+<tr><td><code>run</code> error line numbers</td><td class="num bad">temp-file coords</td><td class="num good">user coords</td></tr>
+<tr><td><code>run</code> / <code>lookup</code> output size</td><td class="num bad">unbounded (3&nbsp;MB / 20&nbsp;kB seen)</td><td class="num good">budgeted</td></tr>
+<tr><td>Tests</td><td class="num">69</td><td class="num good">150</td></tr>
+<tr><td>Magma syntax check (this box)</td><td class="num" colspan="2">12.5&nbsp;ms median · 1,583 checks/s on 32 workers</td></tr>
+</table></div>
+
+<div class="callout"><strong>A satisfying side effect:</strong> the new static arity checker, audited against 4,031 sources of known-correct code (the entire spec-attached package corpus plus all handbook example programs), produced 25 flags — and every inspected flag is a <em>latent bug in Magma's own package tree</em> (e.g. six 3-argument calls to the 2-argument <code>AbsolutelyIrreducibleModules</code> in <code>GrpFP/SolQ/sq_proc.m</code>; a 2-argument <code>NumberField(R1,R2)</code> that no overload accepts). The check's effective false-positive rate on correct code is ≈0, and the flag list may be worth passing to the Magma developers.</div>
+
+<h2>1 · What was reviewed and how</h2>
+<p>Five agents each read their subsystem completely and were required to verify claims empirically (running Magma 2.29-9, parsing the real package tree, exercising the CLI/MCP surface) before reporting. I independently read the full source (~2,500 lines), reproduced the key findings by hand, and re-derived the priority list. The environment itself was part of the review: this repo's facts were established on the old GCP VM with Magma 2.29-7; this box runs 2.29-9, which surfaced one genuine behavioral drift (below) and several stale documented numbers.</p>
+
+<h2>2 · Findings and fixes by area</h2>
+
+<h3>2.1 Signature DB (the data everything trusts)</h3>
+<p><span class="chip">4 extraction bugs</span> All verified against the corpus and the <code>name;</code> oracle, all fixed:</p>
+<ul>
+<li><strong>Ditto docs resolved by name, not file order.</strong> Magma's <code>{"}</code> means "same doc as the immediately preceding intrinsic in the file", chaining across names. 74 intrinsics had wrong or missing docs (e.g. <code>Points(C::CrvHyp[FldAlg])</code> carried the doc of a different calling convention). <span class="fileref">db/package.py</span></li>
+<li><strong>Untyped args silently dropped.</strong> <code>intrinsic F(R::RootDtm, w1, w2)</code> registers as <code>(R, w1::Any, w2::Any)</code> in Magma, but the extractor produced a phantom 1-argument signature — wrong arity for 109 intrinsics, exactly the misinformation that makes an LLM write a call that crashes. <span class="fileref">db/package.py</span></li>
+<li><strong>Merge key ignored <code>~</code> and type spellings.</strong> <code>ChangeUniverse(~S, W)</code> vs <code>ChangeUniverse(S, W)</code> — the function/procedure distinction small models most need — collided; 81 real in-place overloads were dropped as "duplicates". Meanwhile <code>Q::[RngIntElt]</code> vs <code>SeqEnum[RngIntElt]</code> spellings <em>failed</em> to collide, double-listing ~915 overloads. <span class="fileref">db/build.py</span></li>
+<li><strong>Probe parser corrupted by optional-parameter blocks.</strong> <code>name;</code> output interposes <code>[ Bound, ... ]</code> blocks between signature and doc; the parser stored the bracket content <em>as</em> the doc. Fixed and turned into a feature (next item). <span class="fileref">db/probe.py</span></li>
+</ul>
+<p><span class="chip">New: kernel doc harvest</span> <code>ListSignatures</code> provides no doc strings, so 35% of names had none — but the REPL <code>name;</code> form prints docs <em>and optional-parameter names</em>. The build now probes every undocumented name after the merge (parallel, ~500 names/batch): <strong>+5,711 docs and +622 optional-parameter lists for ~zero extra build time</strong> (build is ~30&nbsp;s total on this box). Doc coverage: 65% → 95.7% of names.</p>
+<p>Also fixed: relative <code>--package-root</code> silently produced a package-empty DB; <code>MAGMA_LSP_DB</code> set-but-missing silently fell back to unrelated caches; the loader now prefers the artifact matching the <em>installed</em> Magma version and warns on staleness (previously a 2.29-7 DB would serve silently forever after an upgrade); the category regex accepts 2.29-9's new <code>_</code>-prefixed category.</p>
+
+<h3>2.2 Magma validation backend (the error signal)</h3>
+<p><span class="chip">correctness</span> <span class="chip">safety</span> The single function-wrap check was structurally wrong for the two most common real file shapes, both verified on 2.29-9:</p>
+<ul>
+<li>An <code>intrinsic … end intrinsic;</code> file (the primary package form, 1,776 files in the official tree) got a phantom <code>bad syntax</code> at 1:1 on every open/save — a persistent bogus error at the top of a correct file, the single worst thing you can show an agent.</li>
+<li>A stray top-level <code>end function;</code> (a realistic mid-edit state) closed the wrapper early: phantom errors <em>past the end of the file</em>, and — worse — the remainder of the file <strong>executed during the advertised no-execution pass</strong> (verified: it wrote a file to disk).</li>
+</ul>
+<p><code>syntax_check</code> now dispatches on a tree-sitter pre-scan: files that don't parse are reported from tree-sitter and never reach Magma; package files are checked via <code>Attach()</code> (real positions, nothing executes); plain scripts use the wrap with <code>load</code> directives blanked out. Additionally: positioned error blocks are now filtered to <em>our</em> temp file, so program output that merely looks like a Magma error block can no longer fabricate or mask diagnostics; Magma's tab-expanded columns are mapped back to character offsets; past-EOF errors clamp with an "unterminated block?" hint.</p>
+<p><span class="chip">version drift</span> One real behavioral correction to CLAUDE.md §5: undefined-identifier errors are collected per <em>top-level statement</em> — within one function body (i.e., inside the wrap), Magma stops at the <strong>first</strong> undefined name. The static unknown-name check is therefore more valuable than documented (it reports all of them at once), which motivated running it always, not only when Magma is off.</p>
+
+<h3>2.3 Agent-facing surface (MCP / CLI / frontend)</h3>
+<p><span class="chip">degraded modes</span> <code>check</code> crashed with a raw traceback when Magma was absent (discarding the static findings it had already computed); a timed-out check returned a confident <code>OK</code>; a missing DB message named a command that isn't on the user's PATH; the MCP server cached a missing DB as permanently-<code>None</code>; the handbook enrichment was <em>silently absent on this box</em> for every MCP/CLI lookup (the install-dir derivation assumed the GCP layout); <code>.mcp.json</code> set <code>MAGMA_PATH</code> but no code read it. All fixed — every degraded mode now produces an explicit note, and <code>INCONCLUSIVE</code> is a first-class outcome.</p>
+<p><span class="chip">output discipline</span> <code>run</code> reported errors at temp-file coordinates (line 7 for user line 2) with the temp path leaked, returned exit 0 on runtime errors, and could return megabytes. Now: user-coordinate remapping, <code>SetQuitOnError</code> exit codes, head+tail truncation preserving the tail (where errors and results live). <code>lookup</code> of a 258-overload operator dumped 20&nbsp;kB; overloads are now capped, documented-and-common-types first, with an elision note. Duplicate static+Magma reports of the same undefined name (with contradictory advice — the static hint said "import it" for what was actually a typo) are merged, with suggestions attached to Magma's terse message.</p>
+<p><span class="chip">new capabilities</span> Aimed squarely at the small-model failure modes the evals identified:</p>
+<ul>
+<li><strong><code>magma_search(query)</code></strong> — keyword search over names + 9,860 doc strings (tf-idf with soft-AND coverage). The missing entry point when the model knows the <em>concept</em> but not the name.</li>
+<li><strong>Did-you-mean everywhere</strong> — camelCase-token + edit-distance ranking with a cross-system alias table: <code>FactorInteger</code>&nbsp;→&nbsp;<code>Factorization</code>, <code>NumPoints</code>&nbsp;→&nbsp;<code>NumberOfPoints</code>, <code>PrimeQ</code>&nbsp;→&nbsp;<code>IsPrime</code>, <code>length</code>&nbsp;→&nbsp;<code>'#'</code>. Wired into lookup misses, check diagnostics, and the LSP lint.</li>
+<li><strong>Forgiving lookup resolution</strong> — case-insensitive fallback and operator normalization (<code>#</code>&nbsp;→&nbsp;<code>'#'</code>).</li>
+<li><strong><code>magma_guide()</code></strong> — a one-page, Magma-verified conventions brief (the trap-benchmark conventions: <code>Subgroups</code> returns class representatives, <code>Factorization</code> returns pairs, <code>Coefficients</code> is constant-first, …; sequence idioms; efficiency habits; the lookup→check→run loop). A small model reads it once instead of paying the probing tax per convention.</li>
+<li><strong><code>magma_check</code> executes by default</strong> — the 3-arm eval's own takeaway (its one LSP-arm regression came from a trial that skipped the dynamic run). MCP <code>instructions</code> now encode the proven workflow.</li>
+</ul>
+
+<h3>2.4 LSP server &amp; static analysis</h3>
+<p><span class="chip">protocol / responsiveness</span> Every handler ran synchronously <em>on the asyncio event loop</em> — a Magma check or a workspace rescan (measured at 7&nbsp;s for 1,900 files, on every save) blocked hover/completion/diagnostics for its duration. Handlers now run in pygls' thread pool, publishes are version-checked (stale results are discarded), the workspace scan is mtime-cached (a save re-parses one file), and a failing pass publishes empty diagnostics rather than freezing stale squiggles.</p>
+<p><span class="chip">coherence</span> Save-time and keystroke-time diagnostics disagreed: the static pass ran only when Magma didn't, so saving showed <em>fewer</em> findings than typing, and Magma's binding errors false-flagged names defined in sibling files (never filtered against the workspace scan). The static passes now run on every publish; Magma's undefined-name reports are filtered against workspace/loaded-file symbols and deduped against the suggestion-bearing static diagnostics. <code>load "file";</code> targets are resolved relative to the document and their definitions honored (frontend and server both).</p>
+<p><span class="chip">new lints</span> The mistakes a model that half-knows Magma actually makes, each verified against the grammar and covered by tests:</p>
+<div class="wide"><table>
+<tr><th>Input</th><th>Old behavior</th><th>New diagnostic</th></tr>
+<tr><td><code>x = 5;</code></td><td class="bad">total silence (legal no-op relation)</td><td>assignment is <code>:=</code></td></tr>
+<tr><td><code>x == 5</code> / <code>2 ** 3</code></td><td>cryptic <code>bad syntax</code></td><td>equality is <code>eq</code> / exponentiation is <code>^</code></td></tr>
+<tr><td><code>L.append(3);</code></td><td>misleading "import it" advice</td><td>no method-call syntax; <code>Append(~L, 3)</code></td></tr>
+<tr><td><code>Append(L, 3);</code></td><td class="bad">silence (result discarded, list unchanged)</td><td>use the <code>~</code> procedure form (DB-driven)</td></tr>
+<tr><td><code>flag := True;</code></td><td>error only at save</td><td>booleans are lowercase</td></tr>
+<tr><td><code>q := a // b;</code></td><td>confusing error on the <em>next</em> line</td><td><code>//</code> is a comment; integer division is <code>div</code></td></tr>
+<tr><td><code>Order := 5;</code> + a call to <code>Order</code></td><td class="bad">silence, breaks later</td><td>shadows an intrinsic this file calls</td></tr>
+<tr><td><code>Factorization(6,7,8)</code></td><td class="bad">silence until executed</td><td>no overload takes 3 arguments (accepted: 1, 2)</td></tr>
+</table></div>
+<p>Also fixed: <code>documentSymbol</code> missed named <code>function</code>/<code>procedure</code> definitions entirely (outlines of real files were near-empty) and the <code>func&lt;…&gt;</code>/<code>proc&lt;…&gt;</code> forms (the grammar parses them as <code>constructor</code>; the code referenced node types that don't exist — which also made <code>Helper := func&lt;x | x+1&gt;;</code> a false "unused variable"); loop variables are no longer reported unused (<code>for i := 1 to n</code> is legitimate repeat-n-times); completion's <code>.</code> trigger removed (after <code>R.</code> the valid completions are generator names, not 200 intrinsics); <code>signatureHelp</code> computes the active parameter; selection ranges cover the name token.</p>
+
+<h3>2.5 Eval &amp; validation infrastructure</h3>
+<p>The eval review's verdict, in brief: the scoring core (run the program, compare to precomputed truth — no LLM judge) is trustworthy and none of the committed generations gamed it; but the headline claims outrun the evidence in specific ways worth keeping in mind:</p>
+<ul>
+<li><strong>"Execution dominates" is partly task-selection tautology</strong> — every closed-arm failure on the hard set is a <em>crash</em>, definitionally the failure mode an iterate-on-error loop fixes. Valid as a floor, over-general as a slogan.</li>
+<li><strong>Statistical support is thinner than the percentages suggest</strong> — failures cluster per task (effective n≈20, not 60); closed→lsp alone is p≈0.125 by sign test, significant only pooled with the trap set; raw-vs-lsp differences (59/60 vs 60/60) are pure noise, so "raw edged out lsp" should read "indistinguishable".</li>
+<li><strong>The efficiency table (raw 1.52 vs lsp 1.07 Magma runs/agent) is not reproducible from any committed artifact</strong> — the generation harness lives outside the repo and records no tool-call counts or tokens.</li>
+<li><strong>The two strategically decisive experiments haven't been run:</strong> (1) small models — every generation is Sonnet, yet the target is smaller models, and the "DB is marginal" conclusion may well invert for a model that can't interpret Magma's terse errors; (2) the expensive-probe regime (runs costing minutes) — exactly where the project's own theory says the DB wins.</li>
+</ul>
+<p>Changes landed now: <code>score.py</code> exposes <code>--timeout/--workers</code> (the documented runs used settings the script couldn't produce) and a <code>--strict</code> mode closing the token-containment loophole a chattier weak model would exploit; a new <code>validation/arity_fp.py</code> harness audits the arity checker corpus-wide. All five existing harnesses were re-run on this box against 2.29-9 with the new DB: extractor 0 crashes, DB names 99.98% Magma-confirmed, typo recall 100% (49,456 injections), diff-diagnostics 7 known corpus artifacts.</p>
+
+<h2>3 · What I deliberately did <em>not</em> do</h2>
+<ul>
+<li><strong>Run new LLM evals (Haiku arms).</strong> Highest-value next experiment, but it consumes API budget — flagged for your go-ahead rather than run unilaterally. The harness changes it needs (strict scoring, flags) are in.</li>
+<li><strong>OS-level sandboxing.</strong> The trusted-user posture is documented and unchanged; note the wrapper-escape fix closed the one path where the <em>safe</em> pass could execute code. When the audience widens, <code>bwrap --unshare-all</code> or <code>systemd-run</code> with <code>PrivateNetwork</code>/<code>ProtectSystem</code> around the run/execute paths is the cheap hardening (~11&nbsp;ms cold start leaves plenty of budget).</li>
+<li><strong>UTF-16 position mapping.</strong> LSP positions are UTF-16 code units; tree-sitter emits byte columns and Magma's columns on non-ASCII lines are byte-expanded. Wrong only on lines containing non-ASCII before the diagnostic — rare in Magma source. Documented as a known limitation; a single conversion layer is the right fix.</li>
+<li><strong>References / definition / hover for workspace-defined symbols.</strong> The scan now caches per-file symbol sets; extending it to keep locations would light up definition/references/workspace-symbol for the user's own code. Natural next PR.</li>
+</ul>
+
+<h2>4 · Recommended roadmap (priority order)</h2>
+<ol>
+<li><strong>Haiku (and one more weak model) arms on all three benchmarks</strong> — the strategic question the project exists to answer. ≥5 trials/task, cluster-aware CIs, <code>--strict</code> scoring. Cheap in wall-clock on this box.</li>
+<li><strong>Commit and instrument the generation harness</strong> — record model, prompts, tool-call counts, tokens, wall time per episode, so "efficiency" becomes tokens/dollars per solved task.</li>
+<li><strong>Expensive-probe benchmark</strong> — tasks where one run costs minutes (large class groups, big Galois groups, point counts over large fields) with a hard run budget; the untested regime where the DB should win.</li>
+<li><strong>Non-handbook task suite</strong> — parametrized instances (seeded, checker-scored) from real research workflows, immune to training-data contamination and answer-in-prompt leaks (the hard set has one: <code>golay_mindist</code>).</li>
+<li><strong>Workspace symbol locations</strong> → definition/references/hover for project code (§3).</li>
+<li><strong>Domain tags in the DB</strong> (package area / enumeration category) feeding <code>magma_search</code> — "elliptic curve intrinsics matching X".</li>
+<li><strong>Handbook optional-parameter defaults</strong> merged at build time (kernel sigs' defaults exist nowhere else); <code>.sig</code>-file doc fallback for the Magma-less build path.</li>
+<li><strong>Differential <code>name;</code>-oracle harness</strong> in <code>validation/</code> (arities, ref patterns, doc presence for every name, every build) — it would have caught all four extraction bugs automatically.</li>
+<li><strong>UTF-16 position codec; positionless-diagnostic polish; OS sandbox before widening the audience.</strong></li>
+</ol>
+
+<h2>5 · Verification</h2>
+<ul>
+<li><code>uv run pytest</code>: <strong>150 passed</strong> (was 69; +81 tests covering every fix and feature above), <code>ruff check src tests</code> clean.</li>
+<li>DB rebuilt from scratch on 2.29-9: 10,304 names / 27,571 signatures / 95.7% documented, ~30&nbsp;s.</li>
+<li>All validation harnesses re-run on this box (results in §2.5); new <code>arity_fp</code> audit ≈0 FP.</li>
+<li>Hands-on smoke of every agent-facing path: lookup misses/case/operators, search, check on scripts / package files / load files / mid-edit fragments, run remapping/truncation/exit codes.</li>
+</ul>
+
+<p class="sub" style="margin-top:3rem">Prepared by Claude (Fable) · review agents' full reports available in the session transcript · August 12, 2026</p>
+
+</body>
+</html>
