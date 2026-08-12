@@ -29,8 +29,10 @@ dev = [
 
 [tool.uv.sources]
 # tree-sitter-magma is not on PyPI; build the Python binding from the grammar repo.
-# Generated from Magma's own yacc grammar (MIT). Pinned to a known-good revision.
-tree-sitter-magma = { git = "https://github.com/edgarcosta/tree-sitter-magma" }
+# Generated from Magma's own yacc grammar (MIT). Pinned to a known-good revision so that
+# `uv lock --upgrade` cannot silently float the grammar (bump deliberately, then re-run
+# the validation harnesses in validation/).
+tree-sitter-magma = { git = "https://github.com/edgarcosta/tree-sitter-magma", rev = "75b31f4695261967c7aa87d552d69805dc03c77b" }
 
 [build-system]
 requires = ["hatchling"]

@@ -25,13 +25,17 @@ may be bundled with attribution.
 
 ## 2. System & access (verified)
 
+⚠️ **The project has moved hosts.** Originally built on a GCP VM (`claude-magma`, 192 vCPU,
+Magma 2.29-7 — the source of some historical numbers below, marked where they differ).
+Current environment (verified 2026-08):
+
 | Thing | Value |
 |---|---|
-| Host | dedicated GCP VM `claude-magma`, Linux, **192 vCPU / 1.4 TB RAM** |
-| Magma version | **2.29-7** (`magma -V` → `V2.29-7`) |
-| Binary | `/opt/magma/magma.avx2.exe` (AVX2 build) |
-| Wrapper | `/opt/magma/magma` → symlinked `/usr/local/bin/magma` (just run `magma`) |
-| License | `/opt/magma/magmapassfile` (Simons Foundation); set by the wrapper |
+| Host | local AMD Ryzen AI Max+ 395, Linux, **16 cores / 32 vCPU / 128 GB RAM** |
+| Magma version | **2.29-9** (`magma -V` → `V2.29-9`) |
+| Binary | `/opt/magma/magma.exe` |
+| Wrapper | `/usr/local/bin/magma` (a copy of the wrapper, not a symlink — derive the install dir by *probing*, not `realpath`; the code checks `dirname(realpath(magma))` then falls back to `/opt/magma`) |
+| License | `/opt/magma/magmapassfile`; set by the wrapper |
 | Repo | `https://github.com/AndrewVSutherland2/MagmaLSP` — fetch/push confirmed, branch `main` |
 
 **The wrapper** (`/opt/magma/magma`) sets the env Magma needs and `exec`s the binary. If you call
@@ -61,8 +65,8 @@ Non-negotiable pieces, each learned the hard way:
 - **`timeout <T>`** is the hard wall-clock backstop (external `timeout` verified: a `while true` loop is
   killed, exit 124). Magma's own `-l` flag is **not** a usable resource limit (verified — it's ignored).
 - **`-b`** = batch (suppresses banner / "total time" line). **`-n`** = no startup file (hermetic; ignores the
-  user's `~/.magmarc`). Cold start is ~**104 ms**, so **fresh-process-per-check is cheap and correct** — never
-  reuse a process.
+  user's `~/.magmarc`). Cold start is ~**11 ms** on the current box (was ~104 ms on the GCP VM), so
+  **fresh-process-per-check is cheap and correct** — never reuse a process.
 - **Unique temp filenames** (collisions between parallel checks are real).
 
 **Recommended preamble** for a server-driven check (prevents output corruption):
@@ -215,12 +219,16 @@ Plus a looser positionless pass for `In eval expression` / system errors. Use `f
   `Bad argument types`) → in **batch (`-b`)** mode **aborts the rest of the file** (verified: code after it does
   not run). Continuation-after-error happens only in *interactive* mode.
 - **`Identifier '…' has not been declared or assigned`** (raised at function-definition/binding time) is the
-  **only non-fatal** class: execution continues, so **many** such diagnostics accumulate in one run. It stays
-  exit 0 **even with `SetQuitOnError(true)`** → **never trust exit code alone; always parse stdout text.**
+  **only non-fatal** class: execution continues past it. ⚠️ **Correction (verified on 2.29-9):** the
+  collection is per *top-level statement* — **within one function body, binding aborts at the FIRST
+  undefined identifier**, so the single-function wrap yields at most one undefined-name diagnostic per run.
+  (The static unknown-intrinsic check reports them all at once; that is its main edge over the Magma pass.)
+  It stays exit 0 **even with `SetQuitOnError(true)`** → **never trust exit code alone; always parse stdout
+  text.**
 
-### Syntax-only check — the function-wrap trick (recommended primary, no execution) — verified
+### Syntax-only check — strategy dispatch per file shape (see `magma/validate.py`) — verified
 
-Wrap user code in a never-called function so it is parsed (and names bound) but not executed:
+The never-called-function wrap parses (and binds) user code without executing it:
 ```magma
 SetColumns(0); SetEchoInput(false); SetIgnorePrompt(true);
 __chk := function()
@@ -228,14 +236,27 @@ __chk := function()
 return 0; end function;
 ```
 - **Pure syntax error** in the body → **caught** at parse time, exact line/col.
-- **Undefined name** in the body → **caught** at binding time (non-fatal → collects *all* of them in one pass).
+- **Undefined name** in the body → **caught** at binding time (only the FIRST per body — see above).
 - **Bad-argument-type / value errors** → **NOT caught** (only fire on real execution). For those, run an
   **optional execution pass**: drop the wrapper, prepend `SetMemoryLimit(<bytes>); SetQuitOnError(true);`, run
   under `timeout`, collect the first runtime error.
 
+⚠️ **The wrap is only safe for code that tree-sitter-parses cleanly and contains no `intrinsic`/`load`**
+(verified failure modes: an `intrinsic` declaration inside a function is a phantom `bad syntax` at 1:1; a
+stray top-level `end function;` closes the wrapper early → phantom errors past EOF **and the remainder
+executes**). Therefore `syntax_check` dispatches:
+- tree-sitter ERROR nodes → report tree-sitter positions, never invoke Magma;
+- contains `intrinsic` declarations → write to a temp `.m` and **`Attach(...)`** it (parse errors come back
+  with real positions in that file; nothing user-level executes; binding is lazy, so undefined names in
+  bodies are left to the static check, which models `import`/`forward`);
+- otherwise → the wrap, with `load "…"` directives blanked out first (illegal inside a function) and
+  binding errors suppressed for such files (resolved `load` targets are handled by the callers instead).
+Positioned diagnostics are filtered to *our* temp file (printed output cannot spoof them), clamped to the
+document, and tab-expanded columns are mapped back to character offsets.
+
 `-c <spec>` package-compile catches syntax and exits nonzero, but only for genuine `intrinsic…end intrinsic`
-package files, prefixes output `[PC] `, and gives poor/locationless in-body messages — **use `-c` only to
-validate real `.m` package files**, not arbitrary snippets.
+package files, prefixes output `[PC] `, and gives poor/locationless in-body messages — `Attach` gives the
+same coverage with better positions, so the code uses `Attach`.
 
 ### Exit codes (verified, with `SetQuitOnError(true)`)
 clean → 0; syntax error → 1; thrown runtime error → 1; memory-limit System Error → 1; **but** non-fatal
@@ -457,7 +478,13 @@ spec-attachment and comment-skip bugs and the comprehension/for-loop binder scop
   example helpers (test-corpus artifacts, not check bugs).
 - `bench.py` — performance.
 
-**Measured perf (informs design.md §8 — no C hot path is warranted):** DB load **201 ms** (10,256
-names); hover **0.01 ms**, completion **0.94 ms**, static checks on an ~80-line file **0.2–0.7 ms**;
-Magma syntax check **~102 ms** (cold-start bound), **~548 checks/sec** across 64 workers. Full DB
-build (package extract + ListSignatures + variadic probe) **~40 s**.
+**Measured perf (informs design.md §8 — no C hot path is warranted; current box, 2.29-9):** DB load
+~200 ms (10,304 names); hover **0.01 ms**, completion **~1 ms**, static checks on an ~80-line file
+**0.2–0.5 ms**; Magma syntax check **~12.5 ms** median (cold-start bound), **~1,583 checks/sec**
+across 32 workers. Full DB build (package extract + ListSignatures + variadic probe + kernel doc
+harvest) **~30 s**. (GCP-VM-era numbers: 104 ms cold start, 548 checks/sec on 64 workers, ~40 s
+build without the doc harvest.) Validation results on 2.29-9 after the extraction fixes:
+`validate_db` 99.98% (2 known guarded declarations), `recall` 100% on 49,456 typo injections,
+`diff_diagnostics` 7 residual corpus-artifact FPs, `arity_fp` 25 flags over 4,031 sources — each
+inspected one is a *latent bug in the package corpus itself* (calls to overloads that don't exist),
+i.e. ≈0 true false positives.
