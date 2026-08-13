@@ -53,6 +53,13 @@ _MAX_TS_DIAGS = 20
 class CheckResult:
     diagnostics: list[MagmaDiagnostic]
     timed_out: bool
+    # the Magma process exited nonzero WITHOUT any parseable diagnostic (wrong binary,
+    # failing wrapper, ...): the check did not complete and must not read as clean
+    launch_failed: bool = False
+
+
+def _launch_failed(diags: list[MagmaDiagnostic], res) -> bool:
+    return not diags and not res.timed_out and res.returncode not in (0, None)
 
 
 # ----------------------------------------------------------------------------------------------
@@ -188,7 +195,10 @@ def _wrapped_check(
                 return m is None or m.group(1) not in load_exports
 
             diags = [d for d in diags if _keep(d)]
-    return CheckResult(diagnostics=_fit_to_source(diags, source), timed_out=res.timed_out)
+    fitted = _fit_to_source(diags, source)
+    return CheckResult(
+        diagnostics=fitted, timed_out=res.timed_out, launch_failed=_launch_failed(fitted, res)
+    )
 
 
 def _attach_check(source: str, *, magma_path: str | None, timeout: float) -> CheckResult:
@@ -205,7 +215,12 @@ def _attach_check(source: str, *, magma_path: str | None, timeout: float) -> Che
         # own "Cannot attach" follow-up is filtered out by expect_file.
         diags = parse_diagnostics(res.stdout, expect_file=pkg_path)
         diags = [d for d in diags if "Cannot attach intrinsics" not in d.message]
-        return CheckResult(diagnostics=_fit_to_source(diags, source), timed_out=res.timed_out)
+        fitted = _fit_to_source(diags, source)
+        return CheckResult(
+            diagnostics=fitted,
+            timed_out=res.timed_out,
+            launch_failed=_launch_failed(fitted, res),
+        )
     finally:
         with contextlib.suppress(OSError):
             os.unlink(pkg_path)

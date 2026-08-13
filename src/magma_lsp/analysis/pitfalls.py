@@ -49,7 +49,10 @@ def pitfall_lints(
     """
     data = source.encode("utf-8") if isinstance(source, str) else source
     tree = new_parser().parse(data)
-    available, _calls = analyze(data)  # calls are re-collected below as nodes, with scopes
+    available, _calls = analyze(data)
+    # per-call, position-sensitive boundness (a rebinding in an unrelated scope, or later in
+    # this one, does not shield a call): keyed by the call identifier's start point
+    bound_at = {(cs.line, cs.col): cs.bound_in_scope for cs in _calls}
 
     out: list[Lint] = []
     # call NODES by name (not just names): the shadowing lint must compare scopes — a local
@@ -89,7 +92,11 @@ def pitfall_lints(
                 and child.children[0].type == "identifier"
             ):
                 name = node_text(child.children[0])
-                if name in ref_arg_intrinsics and name not in available:
+                ident = child.children[0]
+                locally_bound = bound_at.get(
+                    (ident.start_point[0], ident.start_point[1]), False
+                )
+                if name in ref_arg_intrinsics and not locally_bound:
                     has_ref = any(
                         a.type == "unary_operator" and a.children and a.children[0].type == "~"
                         for c in child.children
@@ -197,22 +204,43 @@ def pitfall_lints(
 _CALLABLE_TYPES = frozenset(
     {"function_definition", "procedure_definition", "intrinsic_definition", "constructor"}
 )
+_LOOP_TYPES = frozenset({"while_statement", "for_statement", "repeat_statement"})
 
 
 def _shadowed_call_in_scope(assignment_node, calls: list) -> bool:
-    """True iff some call could actually see the assignment: a top-level assignment reaches
-    the whole file, a callable-local one only calls inside that same callable."""
+    """True iff some call could actually execute AFTER the assignment and see it:
+    - the call is in the assignment's scope (same callable, or anywhere for top level —
+      a function defined earlier captures the intrinsic by value, so only textually-later
+      code sees the rebinding), AND
+    - the call is textually after the assignment, OR both sit inside a loop that re-runs
+      the assignment (an earlier-in-body call executes again on the next iteration)."""
     scope = assignment_node.parent
     while scope is not None and scope.type not in _CALLABLE_TYPES:
         scope = scope.parent
-    if scope is None:
-        return bool(calls)
+    # loops enclosing the assignment (within its scope): an earlier call inside one of
+    # these still breaks on the following iteration
+    loop_ids: set[int] = set()
+    p = assignment_node.parent
+    while p is not None and (scope is None or p.id != scope.id):
+        if p.type in _LOOP_TYPES:
+            loop_ids.add(p.id)
+        p = p.parent
     for cn in calls:
-        p = cn
-        while p is not None:
-            if p.id == scope.id:
+        if scope is not None:
+            q = cn.parent
+            while q is not None and q.id != scope.id:
+                q = q.parent
+            if q is None:
+                continue  # call lives in a different callable
+        if cn.start_byte >= assignment_node.end_byte:
+            return True
+        q = cn.parent
+        while q is not None:
+            if q.id in loop_ids:
                 return True
-            p = p.parent
+            if scope is not None and q.id == scope.id:
+                break
+            q = q.parent
     return False
 
 

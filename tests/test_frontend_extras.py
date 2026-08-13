@@ -46,6 +46,17 @@ def test_check_execute_timeout_is_inconclusive_not_fail(monkeypatch):
     assert "INCONCLUSIVE" in out.report and "FAIL" not in out.report
 
 
+def test_check_inconclusive_on_launch_failure(tmp_path):
+    """A magma that exits nonzero without any parseable diagnostic (broken wrapper, wrong
+    binary) must be INCONCLUSIVE, never a clean OK (codex #12 round 14)."""
+    stub = tmp_path / "magma"
+    stub.write_text("#!/bin/sh\necho nonsense-output\nexit 3\n")
+    stub.chmod(0o755)
+    out = frontend.check("x := 1;\n", index=None, magma_path=str(stub))
+    assert not out.ok
+    assert "INCONCLUSIVE" in out.report and "did not complete" in out.report
+
+
 def test_check_degrades_without_magma(monkeypatch):
     def raise_missing(*a, **k):
         raise FileNotFoundError("no magma")

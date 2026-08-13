@@ -324,6 +324,12 @@ def check(
                 f"INCONCLUSIVE: Magma syntax check timed out after {min(timeout, 10.0):.0f}s; "
                 "the code was NOT validated (raise timeout or simplify)"
             )
+        elif syn.launch_failed:
+            inconclusive = True
+            notes.append(
+                "INCONCLUSIVE: Magma exited without producing diagnostics — the check did "
+                "not complete (is the magma binary/wrapper working?)"
+            )
         else:
             magma_diags = syn.diagnostics
     except FileNotFoundError:

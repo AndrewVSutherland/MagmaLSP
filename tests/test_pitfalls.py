@@ -93,6 +93,42 @@ def test_toplevel_shadowing_with_call_in_function_is_flagged():
     assert "shadows" in lint.message
 
 
+def test_call_before_shadowing_assignment_not_flagged():
+    """Magma has no hoisting: a call before the assignment targets the intrinsic and works;
+    warning on it claims a breakage that does not exist (codex #12 round 14)."""
+    src = "f := function(p)\n    d := Degree(p);\n    Degree := 5;\n    return d;\nend function;\n"
+    assert pitfall_lints(src, intrinsic_names=frozenset({"Degree"})) == []
+
+
+def test_call_before_assignment_in_loop_is_flagged():
+    # ...but inside a loop the earlier call re-executes AFTER the assignment on the next
+    # iteration, so this genuinely breaks
+    src = (
+        "f := function(p)\n    while true do\n        d := Degree(p);\n"
+        "        Degree := 5;\n    end while;\n    return 0;\nend function;\n"
+    )
+    (lint,) = pitfall_lints(src, intrinsic_names=frozenset({"Degree"}))
+    assert "shadows" in lint.message
+
+
+def test_discarded_append_not_suppressed_by_disjoint_rebinding():
+    """A local Append rebinding in one helper must not hide the discarded-result warning for
+    a top-level statement call that still targets the intrinsic (codex #12 round 14)."""
+    src = (
+        "f := function(L)\n    Append := func< a, b | a >;\n    return Append(L, 1);\n"
+        "end function;\n"
+        "Append(M, 2);\n"
+    )
+    (lint,) = pitfall_lints(src, ref_arg_intrinsics=frozenset({"Append"}))
+    assert lint.line == 4
+    assert "~" in lint.message  # points at the in-place Append(~L, x) form
+
+
+def test_discarded_append_suppressed_by_in_scope_rebinding():
+    src = "Append := func< a, b | a >;\nAppend(L, 3);\n"
+    assert pitfall_lints(src, ref_arg_intrinsics=frozenset({"Append"})) == []
+
+
 def test_double_slash_comment_suggests_div():
     (lint,) = pitfall_lints("q := a // b;\nprint q;\n")
     assert "div" in lint.message

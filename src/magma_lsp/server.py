@@ -373,6 +373,13 @@ def _compute_diagnostics(
             ran_magma = True
             if res.timed_out:
                 diags.append(_positionless_warning("Magma check timed out; results incomplete"))
+            if res.launch_failed:
+                # Magma exited without diagnostics: nothing was validated — say so and let
+                # the tree-sitter fallback provide syntax errors
+                diags.append(
+                    _positionless_warning("Magma check could not complete; results incomplete")
+                )
+                ran_magma = False
             for d in res.diagnostics:
                 ident_m = _IDENT_IN_MSG_RE.search(d.message)
                 if ident_m:
