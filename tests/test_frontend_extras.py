@@ -80,6 +80,14 @@ def test_search_finds_by_keyword():
 
 
 @needs_db
+def test_search_limit_clamped_at_lower_bound():
+    """limit<=0 must not slice as scored[:-n] and dump the index (codex #12 round 5)."""
+    for bad in (0, -1):
+        res = frontend.search("group", limit=bad)
+        assert 0 < res.n_hits <= 1, res.n_hits  # clamped to 1, not "everything"
+
+
+@needs_db
 def test_lookup_resolves_case_and_operators():
     res = frontend.lookup(["ellipticcurve"], handbook=False)
     assert res.all_found
