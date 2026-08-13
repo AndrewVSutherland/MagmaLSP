@@ -48,7 +48,26 @@ xargs -a "$JOBDIR/pending.txt" -P "$PAR" -I{} bash -c '
     > "$log" 2>&1
   st=$?
   echo "job $i exit $st"
+  exit $st
 ' _ {}
+XARGS_ST=$?   # 123 = some agent invocation failed; completeness is judged below regardless
 
-DONE=$(ls "$JOBDIR/out" 2>/dev/null | wc -l)
-echo "RUN-COMPLETE: $DONE/$TOTAL result files present"
+# Final truth = validated result files, not process statuses (a rerun that repairs earlier
+# failures should exit 0). Recount with the same done() validation used for pending.
+REMAINING=$(python3 - "$JOBDIR" <<'EOF'
+import json, os, sys
+jd = sys.argv[1]
+
+def done(path):
+    try:
+        with open(path) as f:
+            c = json.load(f).get("code")
+        return isinstance(c, str) and bool(c.strip())
+    except (OSError, json.JSONDecodeError, AttributeError):
+        return False
+
+print(sum(1 for j in json.load(open(os.path.join(jd, "manifest.json"))) if not done(j["out"])))
+EOF
+)
+echo "RUN-COMPLETE: $((TOTAL - REMAINING))/$TOTAL validated result files (agent exit failures: xargs status $XARGS_ST)"
+[ "$REMAINING" -eq 0 ] || { echo "RUN-INCOMPLETE: $REMAINING job(s) missing/invalid — rerun this script to retry them"; exit 1; }

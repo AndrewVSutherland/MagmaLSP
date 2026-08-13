@@ -103,7 +103,14 @@ def magma_lookup(names: list[str]) -> str:
         handbook description. Unknown names get ranked "did you mean" suggestions — if you get
         suggestions, look one of them up instead of guessing again.
     """
-    return frontend.lookup(names[:24], index=_index(), hb=_handbook()).text
+    text = frontend.lookup(names[:24], index=_index(), hb=_handbook()).text
+    if len(names) > 24:
+        omitted = ", ".join(names[24:])
+        text += (
+            f"\n\nnote: {len(names) - 24} name(s) NOT looked up (cap 24 per call): "
+            f"{omitted} — call magma_lookup again with these."
+        )
+    return text
 
 
 @mcp.tool()
@@ -134,7 +141,7 @@ def magma_check(code: str, execute: bool = True, timeout: float = 30.0, filename
 
 
 @mcp.tool()
-def magma_run(code: str, timeout: float = 30.0, max_output: int = 24000) -> str:
+def magma_run(code: str, timeout: float = 30.0, max_output: int = 24000, filename: str = "") -> str:
     """Execute Magma source in a fresh sandboxed process and return its combined output.
 
     The process is hermetic (no startup file), wall-clock limited by `timeout`, and
@@ -148,12 +155,17 @@ def magma_run(code: str, timeout: float = 30.0, max_output: int = 24000) -> str:
         timeout: wall-clock limit in seconds (default 30).
         max_output: output budget in characters (default 24000); longer output is head+tail
             truncated (the tail, where errors and final results appear, is preserved).
+        filename: the path this code lives at (or is destined for), if any. The process runs
+            in that file's directory so relative `load "..."` paths resolve — same as
+            magma_check's filename.
 
     Returns:
         The program's stdout+stderr (Magma error blocks included), with notes for timeout,
         truncation, or a nonzero exit.
     """
-    res = frontend.run(code, timeout=timeout, max_output=int(max_output))
+    res = frontend.run(
+        code, timeout=timeout, max_output=int(max_output), filename=filename or None
+    )
     out = res.output
     notes: list[str] = []
     if res.timed_out:
