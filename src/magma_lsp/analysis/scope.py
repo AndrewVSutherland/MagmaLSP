@@ -201,6 +201,11 @@ def defined_symbols(source: bytes | str) -> set[str]:
     function/procedure/intrinsic definitions, ``forward`` declarations, and assignment targets
     (which cover ``F := function ...`` / ``F := func< ... >`` helpers). Deliberately generous —
     used to suppress cross-file "undefined" false positives in multi-file packages.
+
+    Callable bodies are NOT descended into: a name assigned inside a function/procedure/
+    intrinsic is local and does not escape the file (verified on 2.29-9 — a top-level call to
+    it fails with "has not been declared"). Assignments inside top-level control flow
+    (``if``/``for``/...) DO bind at load time and are kept.
     """
     data = source.encode("utf-8") if isinstance(source, str) else source
     tree = new_parser().parse(data)
@@ -214,6 +219,7 @@ def defined_symbols(source: bytes | str) -> set[str]:
             name = _named_def(node)
             if name:
                 out.add(name)
+            continue  # body is local scope: nothing inside escapes to the file level
         elif t == "forward":
             for c in node.children:
                 if c.type == "identifier":

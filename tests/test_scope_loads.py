@@ -54,6 +54,28 @@ def test_load_defined_symbols_transitive_missing_counts_unresolved(tmp_path):
     assert unresolved == 1  # the nested miss disables name checking, not silently ignored
 
 
+def test_load_defined_symbols_excludes_function_locals(tmp_path):
+    """A name assigned inside a loaded file's function body is local (verified: Magma errors
+    on a top-level use), so it must not suppress the undefined-name check — while top-level
+    definitions, assignment-bound callables, and load-time control-flow bindings all export
+    (codex #12 round 3)."""
+    (tmp_path / "lib.m").write_text(
+        "Public := function(n)\n"
+        "    LocalHelper := func<x | x>;\n"
+        "    function InnerFn(y) return y; end function;\n"
+        "    return LocalHelper(n);\n"
+        "end function;\n"
+        "F := function(y) InnerLocal := 3; return y; end function;\n"
+        "if true then CondBound := 7; end if;\n"
+    )
+    names, unresolved = load_defined_symbols('load "lib.m";\n', str(tmp_path))
+    assert unresolved == 0
+    assert {"Public", "F", "CondBound"} <= names
+    assert "LocalHelper" not in names
+    assert "InnerFn" not in names
+    assert "InnerLocal" not in names
+
+
 def test_load_defined_symbols_cycle_terminates(tmp_path):
     (tmp_path / "a.m").write_text('load "b.m";\nfunction FromA(x) return x; end function;\n')
     (tmp_path / "b.m").write_text('load "a.m";\nfunction FromB(x) return x; end function;\n')
