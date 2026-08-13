@@ -348,7 +348,11 @@ def _compute_diagnostics(
                         # proven reachable from this document: not an error in context
                         continue
                     if ident in static_undef_idents:
-                        continue  # the static diagnostic already covers it, with suggestions
+                        # the static diagnostic already covers it, with suggestions — and
+                        # Magma's agreement makes it authoritative, so promote it to Error
+                        for sd in static_undef_idents[ident]:
+                            sd.severity = t.DiagnosticSeverity.Error
+                        continue
                     if ident in ls.workspace_symbols:
                         # A workspace sibling defines the name, but nothing proves this
                         # document loads/attaches that file — Magma's error is real for a
