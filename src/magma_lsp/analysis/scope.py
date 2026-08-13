@@ -27,6 +27,7 @@ class CallSite:
     end_col: int
     n_args: int = -1  # positional args (optional `: P := v` args excluded); -1 = unknown
     has_ref_arg: bool = False  # any `~x` argument (procedure-style call)
+    bound_in_scope: bool = False  # name (re)bound in a scope enclosing the call, BEFORE it
 
 
 _ARG_TOKEN_TYPES = frozenset({"(", ")", ",", ":", "comment"})
@@ -74,40 +75,55 @@ def _named_def(node) -> str | None:
     return None
 
 
+_SCOPE_TYPES = frozenset(
+    {"function_definition", "procedure_definition", "intrinsic_definition", "constructor"}
+)
+
+
 def analyze(source: bytes | str) -> tuple[set[str], list[CallSite]]:
+    """``available`` is the document-wide union of bound names (the undefined pass's view).
+    Each ``CallSite`` additionally records ``bound_in_scope``: whether the name was bound in
+    a lexical scope enclosing the call at the point of the call — a later same-scope binding
+    or a binding local to a *different* callable does not count (Magma has no hoisting)."""
     data = source.encode("utf-8") if isinstance(source, str) else source
     tree = new_parser().parse(data)
 
     available: set[str] = set()
     calls: list[CallSite] = []
 
-    stack = [tree.root_node]
+    def bind(name: str, scopes: tuple[set[str], ...]) -> None:
+        scopes[-1].add(name)
+        available.add(name)
+
+    # pre-order walk (children pushed reversed) with a chain of shared scope sets: bindings
+    # made in an earlier sibling's subtree at the same level are visible to later siblings
+    stack: list[tuple[object, tuple[set[str], ...]]] = [(tree.root_node, (set(),))]
     while stack:
-        node = stack.pop()
+        node, scopes = stack.pop()
         t = node.type
 
         if t == "call" and node.children and node.children[0].type == "identifier":
             ident = node.children[0]
+            name = ident.text.decode("utf-8", "replace")
             sr, sc = ident.start_point
             _er, ec = ident.end_point
             n_args, has_ref = _call_args(node)
-            calls.append(
-                CallSite(ident.text.decode("utf-8", "replace"), sr, sc, ec, n_args, has_ref)
-            )
+            bound = any(name in s for s in scopes)
+            calls.append(CallSite(name, sr, sc, ec, n_args, has_ref, bound))
         elif t in ("function_definition", "procedure_definition", "intrinsic_definition"):
             name = _named_def(node)
             if name:
-                available.add(name)
+                bind(name, scopes)
         elif t == "assignment":
             for c in node.children:
                 if c.type == ":=":
                     break
                 if c.type == "identifier":
-                    available.add(c.text.decode("utf-8", "replace"))
+                    bind(c.text.decode("utf-8", "replace"), scopes)
         elif t == "for_quantifier":
             for c in node.children:
                 if c.type == "identifier":
-                    available.add(c.text.decode("utf-8", "replace"))
+                    bind(c.text.decode("utf-8", "replace"), scopes)
                     break
         elif t == "in":
             # Binder of a for-loop (`for phi in A`), comprehension (`[ e : c in C ]`), or
@@ -115,20 +131,22 @@ def analyze(source: bytes | str) -> tuple[set[str], list[CallSite]]:
             # (A membership test `x in S` harmlessly re-adds an already-defined name.)
             prev = node.prev_sibling
             if prev is not None and prev.type == "identifier":
-                available.add(prev.text.decode("utf-8", "replace"))
+                bind(prev.text.decode("utf-8", "replace"), scopes)
         elif t in _BIND_LISTS:
             for c in node.children:
                 if c.type == "identifier":
-                    available.add(c.text.decode("utf-8", "replace"))
+                    bind(c.text.decode("utf-8", "replace"), scopes)
         elif t == "where_expression":
             # `expr where x is ...` / `where x := ...`: identifiers before `is`/`:=` are bound
             for c in node.children:
                 if c.type in ("is", ":="):
                     break
                 if c.type == "identifier":
-                    available.add(c.text.decode("utf-8", "replace"))
+                    bind(c.text.decode("utf-8", "replace"), scopes)
 
-        stack.extend(node.children)
+        child_scopes = (*scopes, set()) if t in _SCOPE_TYPES else scopes
+        for c in reversed(node.children):
+            stack.append((c, child_scopes))
 
     return available, calls
 
@@ -155,7 +173,7 @@ def load_targets(source: bytes | str) -> list[str]:
 _MAX_LOAD_FILES = 100  # runaway/pathological load-chain backstop
 
 
-def load_defined_symbols(source: bytes | str, base_dir: str | None) -> tuple[set[str], int]:
+def load_analysis(source: bytes | str, base_dir: str | None) -> tuple[set[str], int, set[str]]:
     """Names defined by the files the document ``load``s, followed transitively.
 
     Magma's ``load`` is textual inclusion, so a loaded file's own ``load`` directives run too
@@ -164,12 +182,15 @@ def load_defined_symbols(source: bytes | str, base_dir: str | None) -> tuple[set
     paths against the process cwd, not the loading file's directory (verified on 2.29-9).
     Cycles are tolerated (each file is read once).
 
-    Returns ``(names, n_unresolved)``; an unresolved load means undefined-name checking for
-    the document is unreliable (the loaded file could define anything). Chains longer than
-    ``_MAX_LOAD_FILES`` are cut off and counted as unresolved rather than silently ignored.
+    Returns ``(names, n_unresolved, resolved_paths)``; an unresolved load means undefined-name
+    checking for the document is unreliable (the loaded file could define anything), and
+    ``resolved_paths`` holds the realpaths of every successfully read file — the set of files
+    whose error blocks an execution pass should trust. Chains longer than ``_MAX_LOAD_FILES``
+    are cut off and counted as unresolved rather than silently ignored.
     """
     names: set[str] = set()
     unresolved = 0
+    resolved_paths: set[str] = set()
     queue = list(load_targets(source))
     seen: set[str] = set()
     while queue:
@@ -191,8 +212,15 @@ def load_defined_symbols(source: bytes | str, base_dir: str | None) -> tuple[set
         try:
             names |= defined_symbols(data)
             queue.extend(load_targets(data))
+            resolved_paths.add(real)
         except Exception:
             unresolved += 1
+    return names, unresolved, resolved_paths
+
+
+def load_defined_symbols(source: bytes | str, base_dir: str | None) -> tuple[set[str], int]:
+    """``load_analysis`` without the path set (see there for semantics)."""
+    names, unresolved, _paths = load_analysis(source, base_dir)
     return names, unresolved
 
 

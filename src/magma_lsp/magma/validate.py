@@ -247,7 +247,12 @@ def execution_check(
     timeout: float = 15.0,
     memory_bytes: int = 2 * 1024 * 1024 * 1024,
     cwd: str | None = None,
+    load_paths: frozenset[str] | None = None,
 ) -> CheckResult:
+    """``load_paths``: realpaths of files the program legitimately ``load``s (transitively).
+    Error blocks Magma attributes to those files are REAL (the load executed them) and are
+    surfaced as positionless diagnostics naming the file; blocks naming any other file are
+    still dropped (program output must not spoof diagnostics)."""
     preamble = (
         "SetColumns(0);\n"
         "SetAutoColumns(false);\n"
@@ -260,8 +265,38 @@ def execution_check(
     res = run_source(
         preamble + source + "\n", magma_path=magma_path, timeout=timeout, preamble="", cwd=cwd
     )
-    diags = _shift(parse_diagnostics(res.stdout, expect_file=res.source_path), offset)
-    diags = _fit_to_source(diags, source)
+    diags: list[MagmaDiagnostic] = []
+    for d in parse_diagnostics(res.stdout):
+        if d.file is None or (res.source_path and d.file == res.source_path):
+            diags.append(d)
+            continue
+        real = os.path.realpath(
+            d.file if os.path.isabs(d.file) else os.path.join(cwd or ".", d.file)
+        )
+        if load_paths and real in load_paths:
+            diags.append(
+                MagmaDiagnostic(
+                    1,
+                    1,
+                    d.severity,
+                    f'in loaded file "{d.file}", line {d.line}: {d.message}',
+                    positionless=True,
+                )
+            )
+        # else: a block naming a file we neither wrote nor load — spoofable, dropped
+    diags = _fit_to_source(_shift(diags, offset), source)
+    if not diags and not res.timed_out and res.returncode not in (0, None):
+        # execution failed but nothing parseable survived the filter — never read as clean
+        diags.append(
+            MagmaDiagnostic(
+                1,
+                1,
+                "error",
+                f"Magma exited with an error (status {res.returncode}) but no error block "
+                "could be attributed to your program or its loaded files",
+                positionless=True,
+            )
+        )
     if res.timed_out:
         diags = [
             *diags,

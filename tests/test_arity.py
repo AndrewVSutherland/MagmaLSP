@@ -48,5 +48,24 @@ def test_locally_rebound_name_is_not_checked():
     assert arity_problems(src, fake_arities) == []
 
 
+def test_rebinding_in_disjoint_scope_does_not_suppress():
+    """A local rebinding in one function must not shield an unrelated function's call to the
+    intrinsic (codex #12 round 13)."""
+    src = (
+        "f := function(x)\n    Foo := func< y | y >;\n    return Foo(1,2,3);\nend function;\n"
+        "g := function(x)\n    return Foo(1,2,3);\nend function;\n"
+    )
+    (lint,) = arity_problems(src, fake_arities)
+    assert lint.line == 5  # g's call is flagged; f's call targets its local Foo
+
+
+def test_rebinding_after_call_does_not_suppress():
+    # Magma has no hoisting: the call runs before the local binding exists, so it targets
+    # the intrinsic and is checked.
+    src = "x := Foo(1,2,3);\nFoo := func< y | y >;\n"
+    (lint,) = arity_problems(src, fake_arities)
+    assert lint.line == 0
+
+
 def test_unknown_names_never_flagged():
     assert arity_problems("Qux(1,2,3,4,5);\n", fake_arities) == []

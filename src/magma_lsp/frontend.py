@@ -22,7 +22,7 @@ from pathlib import Path
 
 from .analysis.arity import arity_problems
 from .analysis.pitfalls import pitfall_lints
-from .analysis.scope import load_defined_symbols
+from .analysis.scope import load_analysis
 from .analysis.undefined import undefined_intrinsics
 from .db.index import SignatureIndex
 from .db.store import best_cached_db
@@ -265,8 +265,9 @@ def check(
     # names defined by load-ed files count as known; unresolved loads disable name checking
     loaded_names: set[str] = set()
     loads_unresolved = 0
+    loaded_paths: set[str] = set()
     if "load" in source:
-        loaded_names, loads_unresolved = load_defined_symbols(source, base)
+        loaded_names, loads_unresolved, loaded_paths = load_analysis(source, base)
         if loads_unresolved:
             notes.append(
                 "note: unresolved `load` target(s) — undefined-name and arity checking "
@@ -349,7 +350,13 @@ def check(
     problems.extend(static_by_name.values())
 
     if not problems and not inconclusive and execute and magma_ran:
-        ex = execution_check(source, magma_path=magma_path, timeout=timeout, cwd=base)
+        ex = execution_check(
+            source,
+            magma_path=magma_path,
+            timeout=timeout,
+            cwd=base,
+            load_paths=frozenset(loaded_paths),
+        )
         if ex.timed_out:
             # a long-running computation is NOT invalid code — report it as inconclusive,
             # never as FAIL (any real runtime errors emitted before the wall still count)

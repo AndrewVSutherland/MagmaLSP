@@ -3,7 +3,8 @@ of its overloads is reported before Magma ever runs (design.md §6 "wrong arity"
 
 Conservative by construction:
 - only calls whose target is in the signature DB are checked (unknown names are the
-  ``undefined`` pass's job), and only when the name is not locally re-bound in the document;
+  ``undefined`` pass's job), and only when the name is not re-bound in a lexical scope the
+  call can actually see (a local rebinding in an unrelated function does not suppress);
 - variadic overloads (``...``) accept their base arity or more;
 - calls whose argument count could not be determined are skipped.
 
@@ -25,11 +26,13 @@ AritiesFn = Callable[[str], tuple[set[int], bool] | None]
 
 
 def arity_problems(source: bytes | str, arities: AritiesFn) -> list[Lint]:
-    available, calls = analyze(source)
+    _available, calls = analyze(source)
     out: list[Lint] = []
     reported: set[tuple[int, int]] = set()
     for cs in calls:
-        if cs.n_args < 0 or cs.name in available:
+        # bound_in_scope, not the document-wide set: a local rebinding in an unrelated
+        # function must not shield this call's intrinsic-arity check
+        if cs.n_args < 0 or cs.bound_in_scope:
             continue
         info = arities(cs.name)
         if info is None:

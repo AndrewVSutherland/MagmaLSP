@@ -153,6 +153,25 @@ def test_check_execute_resolves_relative_loads(tmp_path):
 
 
 @magma
+def test_check_execute_surfaces_loaded_file_errors(tmp_path):
+    """An error raised inside a load-ed sibling is a REAL failure of this program — the
+    spoof filter must not erase it and report OK (codex #12 round 13 P1)."""
+    (tmp_path / "bad.m").write_text("function Bad(x)\nreturn 1/0;\nend function;\nz := Bad(1);\n")
+    out = frontend.check(
+        'load "bad.m";\nprint 42;\n', execute=True, filename=str(tmp_path / "main.m")
+    )
+    assert not out.ok, out.report
+    assert "bad.m" in out.report and "zero denominator" in out.report
+    # spoofing is still dropped: printed fake blocks naming unrelated files don't surface
+    ok = frontend.check(
+        'print "In file \\"/etc/passwd\\", line 1, column 1:";\nprint 1;\n',
+        execute=True,
+        filename=str(tmp_path / "main2.m"),
+    )
+    assert ok.ok, ok.report
+
+
+@magma
 def test_run_resolves_relative_loads(tmp_path):
     (tmp_path / "helpers.m").write_text("function Helper(x) return x + 1; end function;\n")
     res = frontend.run('load "helpers.m";\nprint Helper(41);\n', filename=str(tmp_path / "m.m"))
