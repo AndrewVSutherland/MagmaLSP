@@ -71,6 +71,21 @@ def test_search_empty_or_stopword_only_query():
     assert idx.search("the of a") == []
 
 
+def test_search_ubiquitous_term_still_matches():
+    """A term appearing in every doc must rank weakly, not zero out (raw idf goes
+    nonpositive and the scores were discarded — codex #12 round 12). The one-entry
+    index is the deterministic repro."""
+    from magma_lsp.db.model import Intrinsic, MagmaDB, Signature
+
+    db = MagmaDB(
+        version="0",
+        intrinsics={"FooBar": Intrinsic("FooBar", [Signature(name="FooBar", args=[])])},
+    )
+    idx = SignatureIndex(db)
+    hits = idx.search("foo")
+    assert hits and hits[0][0] == "FooBar"
+
+
 def test_suggest_garbage_and_near_miss():
     idx = SignatureIndex(_db())
     assert idx.suggest("xyzzyq") == []

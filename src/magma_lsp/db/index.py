@@ -158,7 +158,10 @@ class SignatureIndex:
         qterms = [t for t in qset if t not in _STOPWORDS and len(t) > 1]
         if not qterms:
             return []
-        idf = {t: math.log(n_docs / (1 + self._doc_freq.get(t, 0))) for t in qterms}
+        # smoothed (always-positive) idf: the raw log(n/(1+df)) goes nonpositive when a term
+        # appears in ~every doc, and nonpositive scores are discarded below — a ubiquitous
+        # term should rank weakly, not erase all results
+        idf = {t: math.log(1.0 + n_docs / (1 + self._doc_freq.get(t, 0))) for t in qterms}
         scored: list[tuple[float, str]] = []
         for name, terms in self._doc_index:
             score = 0.0

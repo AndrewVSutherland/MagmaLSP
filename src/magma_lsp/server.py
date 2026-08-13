@@ -345,9 +345,17 @@ def _compute_diagnostics(
             # so the pass is skipped entirely — same guard as the undefined-name pass)
             for lint in arity_problems(text, ls.index.arities):
                 m = re.search(r"'([^']+)'", lint.message)
-                if m and (m.group(1) in ls.workspace_symbols or m.group(1) in loaded_names):
-                    continue  # a sibling/loaded file redefines the name; its arity differs
-                diags.append(_lint_diagnostic(lint))
+                nm = m.group(1) if m else None
+                if nm and nm in loaded_names:
+                    continue  # a load-ed file redefines the name: proven reachable
+                d = _lint_diagnostic(lint)
+                if nm and nm in ls.workspace_symbols:
+                    # unproven reachability: keep the warning, acknowledge the sibling
+                    d.message += (
+                        f" (a workspace file also defines '{nm}' — if this call targets"
+                        " that definition, make sure the file is load-ed or attached)"
+                    )
+                diags.append(d)
         for lint in unused_variables(text):
             diags.append(_lint_diagnostic(lint))
 

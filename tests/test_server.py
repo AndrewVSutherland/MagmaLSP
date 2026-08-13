@@ -155,6 +155,28 @@ def test_server_arity_skipped_on_unresolved_load(tmp_path):
     assert not any("no overload" in d.message for d in quiet)
 
 
+def test_arity_kept_with_caveat_for_workspace_collision(tmp_path):
+    """A workspace sibling defining the name does not prove reachability, so the arity
+    warning survives (with a caveat); a load-ed definition does suppress it
+    (codex #12 round 12)."""
+    (tmp_path / "lib.m").write_text("function Factorial(a, b) return a; end function;\n")
+    ls = srv.MagmaLanguageServer()
+    ls.magma_available = False
+    ls.enable_lints = True
+    ls.index = _index()
+    ls.intrinsic_names = frozenset(ls.index.db.intrinsics)
+    ls.workspace_roots = [str(tmp_path)]
+    ls.rescan_workspace()
+    bad_call = "x := Factorial(1, 2);\n"  # DB Factorial takes 1 arg
+    diags = srv._compute_diagnostics(ls, bad_call, run_magma=False, base_dir=str(tmp_path))
+    hits = [d for d in diags if "no overload" in d.message]
+    assert hits and all("workspace file also defines" in d.message for d in hits)
+    # load-ed definition: proven reachable -> suppressed
+    loaded = 'load "lib.m";\n' + bad_call
+    diags2 = srv._compute_diagnostics(ls, loaded, run_magma=False, base_dir=str(tmp_path))
+    assert not any("no overload" in d.message for d in diags2)
+
+
 def test_magma_undefined_workspace_name_downgraded_not_suppressed(monkeypatch, tmp_path):
     """Magma's authoritative undefined-identifier error must survive (as a warning) when the
     name is defined only in an unrelated workspace sibling — and stay an error when the name
