@@ -52,9 +52,41 @@ def detect_version(magma_path: str | None = None, package_root: str | None = Non
     return "unknown"
 
 
+def _norm_type(t: str | None) -> str:
+    """Canonical type spelling: package shorthands -> the ``ListSignatures`` form, so the
+    same overload declared as ``Q::[RngIntElt]`` and enumerated as ``SeqEnum[RngIntElt]``
+    (or ``x::.`` vs ``x::Any``) compares equal."""
+    s = " ".join((t or "").split())
+    s = s.replace("[ ", "[").replace(" ]", "]").replace("{ ", "{").replace(" }", "}")
+    if s in (".", ""):
+        return "Any"
+    if s == "[]":
+        return "SeqEnum"
+    if s == "{}":
+        return "SetEnum"
+    if s.startswith("{@") and s.endswith("@}"):
+        inner = s[2:-2].strip()
+        return f"SetIndx[{_norm_type(inner)}]" if inner else "SetIndx"
+    if s.startswith("{*") and s.endswith("*}"):
+        inner = s[2:-2].strip()
+        return f"SetMulti[{_norm_type(inner)}]" if inner else "SetMulti"
+    if s.startswith("[") and s.endswith("]"):
+        return f"SeqEnum[{_norm_type(s[1:-1])}]"
+    if s.startswith("{") and s.endswith("}"):
+        return f"SetEnum[{_norm_type(s[1:-1])}]"
+    return s
+
+
 def _sig_type_key(sig: Signature) -> tuple:
-    """Identity for dedup across sources: name + positional arg types (names ignored)."""
-    return (sig.name, tuple((p.type or "") for p in sig.args))
+    """Identity for dedup across sources: name + positional arg types (names ignored), with
+    normalized type spellings and the ``~`` reference marker (``Foo(~x::T)`` and
+    ``Foo(x::T)`` are genuinely different intrinsics: in-place procedure vs function)."""
+    return (
+        sig.name,
+        tuple(
+            ("~" if p.name.startswith("~") else "") + _norm_type(p.type) for p in sig.args
+        ),
+    )
 
 
 def extract_package(
@@ -120,7 +152,11 @@ def build_db(
     include_kernel: bool = True,
     probe_missing: bool = True,
     use_spec: bool = True,
+    harvest_docs: bool = True,
 ) -> MagmaDB:
+    # A relative root would silently defeat the spec-attachment filter (attached_files
+    # absolutizes; iter_package_files would not) -> zero package signatures. Absolutize first.
+    package_root = os.path.abspath(package_root)
     version = detect_version(magma_path, package_root)
 
     # Only extract intrinsics from spec-attached files: a default Magma session loads just those,
@@ -171,6 +207,32 @@ def build_db(
         db.stats["names"] = len(db.intrinsics)
         db.stats["total_signatures"] = sum(len(i.signatures) for i in db.intrinsics.values())
         db.stats["documented_names"] = sum(1 for i in db.intrinsics.values() if i.has_doc)
+
+    # Kernel doc harvest: ListSignatures shows no doc strings, but the REPL `name;` form does
+    # (plus optional-parameter names). Probe every undocumented name and back-fill. Lifts doc
+    # coverage from ~65% to ~96% for a couple of minutes of build time.
+    if harvest_docs and have_magma and kernel_sigs:
+        undocumented = sorted(n for n, i in db.intrinsics.items() if not i.has_doc)
+        harvested = probe_names(undocumented, magma_path=magma_path, timeout=enum_timeout)
+        filled_docs = filled_opts = 0
+        for name, psigs in harvested.items():
+            intr = db.intrinsics.get(name)
+            if intr is None:
+                continue
+            by_key = {_sig_type_key(s): s for s in psigs}
+            for sig in intr.signatures:
+                psig = by_key.get(_sig_type_key(sig))
+                if psig is None:
+                    continue
+                if psig.doc and not sig.doc:
+                    sig.doc = psig.doc
+                    filled_docs += 1
+                if psig.opt_params and not sig.opt_params:
+                    sig.opt_params = list(psig.opt_params)
+                    filled_opts += 1
+        db.stats["harvested_docs"] = filled_docs
+        db.stats["harvested_opt_params"] = filled_opts
+        db.stats["documented_names"] = sum(1 for i in db.intrinsics.values() if i.has_doc)
     return db
 
 
@@ -187,6 +249,12 @@ def main(argv: list[str] | None = None) -> int:
         "--no-probe",
         action="store_true",
         help="skip recovering variadic intrinsics (Sprintf, Explode) that ListSignatures omits",
+    )
+    ap.add_argument(
+        "--no-doc-harvest",
+        action="store_true",
+        help="skip probing `name;` for kernel doc strings / optional-parameter names "
+        "(faster build, ~30%% fewer documented names)",
     )
     args = ap.parse_args(argv)
 
@@ -206,6 +274,7 @@ def main(argv: list[str] | None = None) -> int:
         enum_timeout=args.enum_timeout,
         workers=args.workers,
         probe_missing=not args.no_probe,
+        harvest_docs=not args.no_doc_harvest,
     )
     out = Path(args.out) if args.out else db_path_for_version(db.version)
     out.parent.mkdir(parents=True, exist_ok=True)

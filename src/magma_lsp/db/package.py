@@ -82,11 +82,16 @@ def extract_signature(node: Node, *, file: str | None = None) -> Signature | Non
     returns: list[str] = []
     doc: str | None = None
     seen_arrow = False
+    in_args = False
     has_arrow = any(c.type == "->" for c in node.children)
 
     for child in node.children:
         t = child.type
-        if t == "->":
+        if t == "(" and not seen_arrow:
+            in_args = True
+        elif t == ")":
+            in_args = False
+        elif t == "->":
             seen_arrow = True
         elif t == "typed_identifier":
             p = _arg_from_typed(child, is_ref=False)
@@ -96,6 +101,14 @@ def extract_signature(node: Node, *, file: str | None = None) -> Signature | Non
             p = _arg_from_typed(child, is_ref=True)
             if p:
                 args.append(p)
+        elif t == "identifier" and in_args:
+            # Untyped positional arg: Magma registers it as ::Any (e.g.
+            # `intrinsic DecomposeTensorProduct(R::RootDtm, w1, w2)`). Dropping it would
+            # fabricate a wrong-arity signature.
+            args.append(Param(name=node_text(child), type="Any"))
+        elif t == "ref_identifier" and in_args:
+            # Untyped reference arg: `~x` with no type is also ::Any.
+            args.append(Param(name="~" + node_text(child).lstrip("~"), type="Any"))
         elif t == "optional_parameter":
             p = _opt_param(child)
             if p:
@@ -127,15 +140,17 @@ def extract_file(path: str | Path) -> list[Signature]:
     tree = parser.parse(data)
 
     sigs: list[Signature] = []
-    last_doc: dict[str, str | None] = {}
+    # Magma resolves the {"} ditto to the doc of the *immediately preceding intrinsic in the
+    # file*, regardless of name, and dittoes chain (A doc; B {"}; C {"} all share A's doc).
+    last_doc: str | None = None
     for node in _iter_intrinsic_defs(tree.root_node):
         sig = extract_signature(node, file=path)
         if sig is None:
             continue
         if sig.doc == DITTO:
-            sig.doc = last_doc.get(sig.name)
+            sig.doc = last_doc
         else:
-            last_doc[sig.name] = sig.doc
+            last_doc = sig.doc
         sigs.append(sig)
     return sigs
 

@@ -5,8 +5,15 @@ operations Claude Code uses (CLAUDE.md §9): pushed diagnostics after edits, plu
 completion, signature help, go-to-definition, and document symbols.
 
 Diagnostics strategy:
-- fast pass on every change: unused-variable lints (+ tree-sitter syntax errors when Magma is off).
-- full pass on open/save: Magma syntax/binding check (authoritative) + lints.
+- static pass on every change (fast, no Magma process): pitfall lints (`=` vs `:=`, `==`,
+  method-call syntax, ...), unknown-intrinsic check with did-you-mean suggestions, arity check,
+  unused-variable lints.
+- plus the Magma syntax/binding pass on open/save (authoritative for syntax; it picks a safe
+  strategy per file shape — see magma/validate.py). Its undefined-name reports are filtered
+  against workspace-defined symbols so multi-file projects don't see phantom errors.
+
+Document handlers run in pygls' thread pool (never on the event loop), and a publish is skipped
+if the document changed while its diagnostics were being computed.
 """
 
 from __future__ import annotations
@@ -20,14 +27,19 @@ from pygls.lsp.server import LanguageServer
 from pygls.uris import from_fs_path, to_fs_path
 
 from . import __version__
+from .analysis.arity import arity_problems
 from .analysis.lints import unused_variables
+from .analysis.pitfalls import pitfall_lints
+from .analysis.scope import load_defined_symbols
 from .analysis.symbols import Symbol, document_symbols
 from .analysis.undefined import undefined_intrinsics
-from .analysis.workspace import scan_workspace
+from .analysis.workspace import ScanCache, scan_workspace
 from .db.index import SignatureIndex
 from .db.model import Signature
-from .db.store import newest_cached_db
+from .db.store import best_cached_db
+from .frontend import installed_magma_version
 from .handbook import HandbookIndex
+from .magma.diagnostics import MagmaDiagnostic
 from .magma.runner import find_magma
 from .magma.validate import syntax_check
 from .parsing import new_parser
@@ -35,6 +47,7 @@ from .parsing import new_parser
 logger = logging.getLogger("magma_lsp")
 
 WORD_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+_IDENT_IN_MSG_RE = re.compile(r"Identifier '([A-Za-z_][A-Za-z0-9_]*)'")
 
 
 class MagmaLanguageServer(LanguageServer):
@@ -48,13 +61,16 @@ class MagmaLanguageServer(LanguageServer):
         self.enable_unknown_intrinsics: bool = True
         self.magma_timeout: float = 10.0
         self.intrinsic_names: frozenset[str] = frozenset()
+        self.ref_arg_names: frozenset[str] = frozenset()
         # Names defined across the project's own .m files (sibling helpers); see analysis/workspace.
         self.enable_workspace_symbols: bool = True
         self.workspace_max_files: int = 2000
         self.workspace_roots: list[str] = []
         self.workspace_symbols: frozenset[str] = frozenset()
+        self._scan_cache: ScanCache = {}
         self.enable_handbook: bool = True
         self.handbook: HandbookIndex | None = None
+        self._suggest_cache: dict[str, list[str]] = {}
 
     def configure(self, init_options: dict | None) -> None:
         opts = init_options or {}
@@ -76,12 +92,21 @@ class MagmaLanguageServer(LanguageServer):
                 except Exception as exc:
                     logger.warning("failed to load handbook index: %s", exc)
 
-        db_path = opts.get("dbPath") or newest_cached_db()
+        db_path = opts.get("dbPath") or best_cached_db(installed_magma_version())
         if db_path:
             try:
                 self.index = SignatureIndex.from_path(db_path)
                 self.intrinsic_names = frozenset(self.index.db.intrinsics)
+                self.ref_arg_names = self.index.ref_arg_names
                 logger.info("loaded signature DB %s (%d names)", db_path, len(self.intrinsic_names))
+                installed = installed_magma_version()
+                if installed and self.index.version not in ("unknown", installed):
+                    logger.warning(
+                        "signature DB is for Magma %s but installed Magma is %s; "
+                        "run magma-lsp-build-db to rebuild",
+                        self.index.version,
+                        installed,
+                    )
             except Exception as exc:
                 logger.warning("failed to load signature DB %s: %s", db_path, exc)
         else:
@@ -97,23 +122,42 @@ class MagmaLanguageServer(LanguageServer):
         if not roots:
             return
         try:
-            scan = scan_workspace(roots, max_files=self.workspace_max_files)
+            scan = scan_workspace(roots, max_files=self.workspace_max_files, cache=self._scan_cache)
         except Exception as exc:  # never let a scan crash the server
             logger.warning("workspace scan failed: %s", exc)
             return
-        self.workspace_symbols = scan.names
         if scan.truncated:
+            # keep whatever we had rather than wiping a previously good symbol set
             logger.info(
-                "workspace too large to scan (> %d .m files); skipping project-symbol scan",
+                "workspace too large to scan (> %d .m files); keeping previous project symbols",
                 self.workspace_max_files,
             )
         else:
+            self.workspace_symbols = scan.names
             logger.info(
                 "workspace scan: %d names from %d files", len(scan.names), scan.files_scanned
             )
 
+    def invalidate_scanned_file(self, path: str) -> None:
+        """Drop a file's scan-cache entry. Used on didSave: the server KNOWS the file changed,
+        even when ``(mtime_ns, size)`` didn't — a same-size edit within one timestamp tick on
+        a coarse-mtime filesystem (HFS+, some network mounts) is invisible to stat."""
+        self._scan_cache.pop(os.path.normpath(path), None)
+
     def known_call_names(self) -> frozenset[str]:
         return self.intrinsic_names | self.workspace_symbols
+
+    def suggest(self, name: str) -> list[str]:
+        """Cached near-miss suggestions (suggestion computation is ~50 ms; cache per name)."""
+        if self.index is None:
+            return []
+        hit = self._suggest_cache.get(name)
+        if hit is None:
+            hit = self.index.suggest(name, limit=3)
+            if len(self._suggest_cache) > 4096:
+                self._suggest_cache.clear()
+            self._suggest_cache[name] = hit
+        return hit
 
 
 server = MagmaLanguageServer()
@@ -142,16 +186,14 @@ def _prefix_at(text: str, pos: t.Position) -> str:
     return m.group(0) if m else ""
 
 
-def _enclosing_call_name(text: str, pos: t.Position) -> str | None:
-    """The intrinsic name of the call the cursor is inside, via tree-sitter."""
+def _enclosing_call(text: str, pos: t.Position):
+    """The innermost ``call`` node containing the cursor, via tree-sitter."""
     tree = new_parser().parse(text.encode("utf-8"))
     point = (pos.line, pos.character)
     node = tree.root_node.descendant_for_point_range(point, point)
     while node is not None:
         if node.type == "call":
-            for c in node.children:
-                if c.type == "identifier":
-                    return c.text.decode("utf-8", "replace")
+            return node
         node = node.parent
     return None
 
@@ -170,25 +212,32 @@ def on_initialize(ls: MagmaLanguageServer, params: t.InitializeParams):
 
 
 @server.feature(t.INITIALIZED)
+@server.thread()
 def on_initialized(ls: MagmaLanguageServer, params: t.InitializedParams):
     # Scan the project for sibling-defined symbols *after* the handshake so it never delays it.
     ls.rescan_workspace()
 
 
 @server.feature(t.TEXT_DOCUMENT_DID_OPEN)
+@server.thread()
 def did_open(ls: MagmaLanguageServer, params: t.DidOpenTextDocumentParams):
     _publish(ls, params.text_document.uri, run_magma=True)
 
 
 @server.feature(t.TEXT_DOCUMENT_DID_CHANGE)
+@server.thread()
 def did_change(ls: MagmaLanguageServer, params: t.DidChangeTextDocumentParams):
     _publish(ls, params.text_document.uri, run_magma=False)
 
 
 @server.feature(t.TEXT_DOCUMENT_DID_SAVE)
+@server.thread()
 def did_save(ls: MagmaLanguageServer, params: t.DidSaveTextDocumentParams):
     if params.text_document.uri.endswith((".m", ".magma")):
-        ls.rescan_workspace()  # a saved definition may now satisfy sibling calls
+        path = to_fs_path(params.text_document.uri)
+        if path:
+            ls.invalidate_scanned_file(path)  # don't trust stat to notice the save
+        ls.rescan_workspace()  # cached: only invalidated/changed files are re-parsed
     _publish(ls, params.text_document.uri, run_magma=True)
 
 
@@ -236,53 +285,171 @@ def _publish(ls: MagmaLanguageServer, uri: str, *, run_magma: bool) -> None:
     try:
         doc = ls.workspace.get_text_document(uri)
         text = doc.source
+        version = doc.version
     except Exception:
         return
-    diagnostics = _compute_diagnostics(ls, text, run_magma=run_magma)
+    base_dir = os.path.dirname(to_fs_path(uri) or "") or None
+    try:
+        diagnostics = _compute_diagnostics(ls, text, run_magma=run_magma, base_dir=base_dir)
+    except Exception as exc:  # a broken pass must not freeze stale squiggles in the editor
+        logger.warning("diagnostics computation failed: %s", exc)
+        diagnostics = []
+    try:
+        if ls.workspace.get_text_document(uri).version != version:
+            return  # superseded: a newer didChange will publish fresher results
+    except Exception:
+        return
     ls.text_document_publish_diagnostics(
-        t.PublishDiagnosticsParams(uri=uri, diagnostics=diagnostics)
+        t.PublishDiagnosticsParams(uri=uri, diagnostics=diagnostics, version=version)
     )
 
 
 def _compute_diagnostics(
-    ls: MagmaLanguageServer, text: str, *, run_magma: bool
+    ls: MagmaLanguageServer, text: str, *, run_magma: bool, base_dir: str | None = None
 ) -> list[t.Diagnostic]:
     diags: list[t.Diagnostic] = []
 
-    use_magma = run_magma and ls.enable_magma_diagnostics and ls.magma_available
-    if use_magma:
-        try:
-            res = syntax_check(text, magma_path=ls.magma_path, timeout=ls.magma_timeout)
-            for d in res.diagnostics:
-                line0 = max(0, d.line - 1)
-                col0 = max(0, d.col - 1)
-                diags.append(
-                    t.Diagnostic(
-                        range=t.Range(
-                            start=t.Position(line0, col0),
-                            end=t.Position(line0, col0 + 1),
-                        ),
-                        message=d.message,
-                        severity=t.DiagnosticSeverity.Error
-                        if d.severity == "error"
-                        else t.DiagnosticSeverity.Warning,
-                        source="magma",
-                    )
+    # names defined by load-ed files count as known; unresolved loads disable name checking
+    loaded_names: set[str] = set()
+    loads_unresolved = 0
+    if "load" in text:
+        loaded_names, loads_unresolved = load_defined_symbols(text, base_dir)
+
+    # ---- static passes: always run (fast, offline, and they see ALL problems at once) ----
+    static_undef_idents: dict[str, list[t.Diagnostic]] = {}
+    if ls.enable_unknown_intrinsics and ls.intrinsic_names and not loads_unresolved:
+        # Workspace names are NOT folded into `known`: their reachability from this document
+        # is unproven, so they get the softened warning below — on every edit, not just on
+        # the save/open path where the Magma pass emits its equivalent.
+        known = ls.intrinsic_names | loaded_names
+        for lint in undefined_intrinsics(text, known, suggest=ls.suggest):
+            d = _lint_diagnostic(lint)
+            m = re.match(r"'([^']+)'", lint.message)
+            name = m.group(1) if m else None
+            if name and name in ls.workspace_symbols:
+                d.message = (
+                    f"'{name}' is not defined in this file; a workspace file defines it — "
+                    "make sure that file is load-ed or attached when this file runs"
                 )
-        except Exception as exc:
-            logger.warning("magma syntax check failed: %s", exc)
-    else:
-        diags.extend(_tree_sitter_syntax_errors(text))
-        # Static undefined-intrinsic check: the fast/offline complement to Magma's binding pass.
-        # Skipped when the Magma pass ran above (it is authoritative for undefined names).
-        if ls.enable_unknown_intrinsics and ls.intrinsic_names:
-            for lint in undefined_intrinsics(text, ls.known_call_names()):
-                diags.append(_lint_diagnostic(lint))
+            if name:
+                static_undef_idents.setdefault(name, []).append(d)
+            diags.append(d)
 
     if ls.enable_lints:
+        for lint in pitfall_lints(
+            text, intrinsic_names=ls.intrinsic_names, ref_arg_intrinsics=ls.ref_arg_names
+        ):
+            diags.append(_lint_diagnostic(lint))
+        if ls.index is not None and not loads_unresolved:
+            # (unresolved load -> the target could redefine any intrinsic with any arity,
+            # so the pass is skipped entirely — same guard as the undefined-name pass)
+            for lint in arity_problems(text, ls.index.arities):
+                m = re.search(r"'([^']+)'", lint.message)
+                nm = m.group(1) if m else None
+                if nm and nm in loaded_names:
+                    continue  # a load-ed file redefines the name: proven reachable
+                d = _lint_diagnostic(lint)
+                if nm and nm in ls.workspace_symbols:
+                    # unproven reachability: keep the warning, acknowledge the sibling
+                    d.message += (
+                        f" (a workspace file also defines '{nm}' — if this call targets"
+                        " that definition, make sure the file is load-ed or attached)"
+                    )
+                diags.append(d)
         for lint in unused_variables(text):
             diags.append(_lint_diagnostic(lint))
+
+    # ---- Magma pass on open/save: authoritative for syntax ----
+    use_magma = run_magma and ls.enable_magma_diagnostics and ls.magma_available
+    ran_magma = False
+    if use_magma:
+        try:
+            res = syntax_check(
+                text,
+                magma_path=ls.magma_path,
+                timeout=ls.magma_timeout,
+                load_exports=frozenset(loaded_names) if not loads_unresolved else None,
+            )
+            ran_magma = True
+            if res.timed_out:
+                diags.append(_positionless_warning("Magma check timed out; results incomplete"))
+            if res.launch_failed:
+                # Magma exited without diagnostics: nothing was validated — say so and let
+                # the tree-sitter fallback provide syntax errors
+                diags.append(
+                    _positionless_warning("Magma check could not complete; results incomplete")
+                )
+                ran_magma = False
+            for d in res.diagnostics:
+                ident_m = _IDENT_IN_MSG_RE.search(d.message)
+                if ident_m:
+                    ident = ident_m.group(1)
+                    if ident in loaded_names or ident in ls.intrinsic_names:
+                        # proven reachable from this document: not an error in context
+                        continue
+                    if ident in ls.workspace_symbols:
+                        # A workspace sibling defines the name, but nothing proves this
+                        # document loads/attaches that file — Magma's error is real for a
+                        # standalone run of this file, yet in spec/attach-style projects
+                        # the sibling is available at runtime. The signal stays a Warning
+                        # (never promoted): the static pass usually emitted it already.
+                        if ident not in static_undef_idents:
+                            w = _magma_diagnostic(d)
+                            w.severity = t.DiagnosticSeverity.Warning
+                            w.message += (
+                                f" (a workspace file defines '{ident}' — make sure that file"
+                                " is load-ed or attached when this file runs)"
+                            )
+                            diags.append(w)
+                        continue
+                    if ident in static_undef_idents:
+                        # the static diagnostic already covers it, with suggestions — and
+                        # Magma's agreement makes it authoritative, so promote it to Error
+                        for sd in static_undef_idents[ident]:
+                            sd.severity = t.DiagnosticSeverity.Error
+                        continue
+                diags.append(_magma_diagnostic(d))
+        except FileNotFoundError:
+            ls.magma_available = False
+            logger.warning("magma executable disappeared; disabling Magma diagnostics")
+        except Exception as exc:
+            logger.warning("magma syntax check failed: %s", exc)
+
+    if not ran_magma:
+        # fast tree-sitter syntax errors when the Magma pass didn't run
+        diags.extend(_tree_sitter_syntax_errors(text))
     return diags
+
+
+def _magma_diagnostic(d: MagmaDiagnostic) -> t.Diagnostic:
+    if getattr(d, "positionless", False):
+        return _positionless_warning(d.message) if d.severity == "warning" else (
+            t.Diagnostic(
+                range=t.Range(start=t.Position(0, 0), end=t.Position(0, 1)),
+                message=d.message,
+                severity=t.DiagnosticSeverity.Error,
+                source="magma",
+            )
+        )
+    line0 = max(0, d.line - 1)
+    col0 = max(0, d.col - 1)
+    return t.Diagnostic(
+        range=t.Range(start=t.Position(line0, col0), end=t.Position(line0, col0 + 1)),
+        message=d.message,
+        severity=t.DiagnosticSeverity.Error
+        if d.severity == "error"
+        else t.DiagnosticSeverity.Warning,
+        source="magma",
+    )
+
+
+def _positionless_warning(message: str) -> t.Diagnostic:
+    return t.Diagnostic(
+        range=t.Range(start=t.Position(0, 0), end=t.Position(0, 1)),
+        message=message,
+        severity=t.DiagnosticSeverity.Warning,
+        source="magma",
+    )
 
 
 def _lint_diagnostic(lint) -> t.Diagnostic:
@@ -316,7 +483,7 @@ def _tree_sitter_syntax_errors(text: str) -> list[t.Diagnostic]:
             out.append(
                 t.Diagnostic(
                     range=t.Range(t.Position(sr, sc), t.Position(er, ec)),
-                    message="Syntax error" if node.type == "ERROR" else "Missing syntax",
+                    message=f"Missing '{node.type}'" if node.is_missing else "Syntax error",
                     severity=t.DiagnosticSeverity.Error,
                     source="magma-lsp",
                 )
@@ -347,7 +514,7 @@ def hover(ls: MagmaLanguageServer, params: t.HoverParams) -> t.Hover | None:
     return t.Hover(contents=t.MarkupContent(kind=t.MarkupKind.Markdown, value=md))
 
 
-@server.feature(t.TEXT_DOCUMENT_COMPLETION, t.CompletionOptions(trigger_characters=["."]))
+@server.feature(t.TEXT_DOCUMENT_COMPLETION)
 def completion(ls: MagmaLanguageServer, params: t.CompletionParams) -> t.CompletionList:
     if ls.index is None:
         return t.CompletionList(is_incomplete=False, items=[])
@@ -381,12 +548,23 @@ def signature_help(
     if ls.index is None:
         return None
     text = ls.workspace.get_text_document(params.text_document.uri).source
-    name = _enclosing_call_name(text, params.position)
-    if not name:
+    call = _enclosing_call(text, params.position)
+    if call is None or not call.children or call.children[0].type != "identifier":
         return None
+    name = call.children[0].text.decode("utf-8", "replace")
     sigs = ls.index.signatures(name)
     if not sigs:
         return None
+    shown = sigs[:25]
+    has_args = any(
+        a.type not in ("(", ")", ",", ":", "comment")
+        for c in call.children
+        if c.type == "argument_list"
+        for a in c.children
+    )
+    active_sig, active_param = _select_signature(
+        shown, _active_parameter(call, params.position), has_args=has_args
+    )
     infos = [
         t.SignatureInformation(
             label=_sig_label(s),
@@ -398,9 +576,47 @@ def signature_help(
                 for a in s.args
             ],
         )
-        for s in sigs[:25]
+        for s in shown
     ]
-    return t.SignatureHelp(signatures=infos, active_signature=0, active_parameter=0)
+    return t.SignatureHelp(
+        signatures=infos, active_signature=active_sig, active_parameter=active_param
+    )
+
+
+def _select_signature(sigs, n_commas: int, *, has_args: bool = True) -> tuple[int, int | None]:
+    """Pick the overload the cursor position fits (first with more args than commas typed;
+    else the widest) and clamp the active parameter inside it — an index past the active
+    signature's parameter list makes clients omit or mis-highlight the help. An EMPTY
+    argument list prefers a zero-argument overload, and a selected signature without
+    parameters gets no active parameter at all."""
+    if not has_args:
+        zi = next((i for i, s in enumerate(sigs) if not s.args), None)
+        if zi is not None:
+            return zi, None
+    idx = next((i for i, s in enumerate(sigs) if len(s.args) > n_commas), None)
+    if idx is None:
+        idx = max(range(len(sigs)), key=lambda i: len(sigs[i].args))
+    if not sigs[idx].args:
+        return idx, None
+    return idx, min(n_commas, len(sigs[idx].args) - 1)
+
+
+def _active_parameter(call_node, pos: t.Position) -> int:
+    """Number of top-level ',' tokens in the POSITIONAL part of the argument list before the
+    cursor — commas after the ``:`` separate optional ``P := v`` arguments, which are not in
+    the signature's parameter list and must not advance the index."""
+    n = 0
+    for c in call_node.children:
+        if c.type == "argument_list":
+            for a in c.children:
+                if a.type == ":":
+                    return n
+                if a.type == "," and (
+                    a.start_point[0] < pos.line
+                    or (a.start_point[0] == pos.line and a.start_point[1] < pos.character)
+                ):
+                    n += 1
+    return n
 
 
 @server.feature(t.TEXT_DOCUMENT_DEFINITION)
@@ -466,7 +682,8 @@ def workspace_symbol(
 
 def _to_document_symbol(s: Symbol) -> t.DocumentSymbol:
     rng = t.Range(t.Position(s.line, s.col), t.Position(s.end_line, s.end_col))
-    name_rng = t.Range(t.Position(s.line, s.col), t.Position(s.line, s.col + len(s.name)))
+    nl, nc = s.name_pos()
+    name_rng = t.Range(t.Position(nl, nc), t.Position(nl, nc + len(s.name)))
     return t.DocumentSymbol(
         name=s.name,
         kind=_SYMBOL_KIND.get(s.kind, t.SymbolKind.Variable),

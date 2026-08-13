@@ -15,6 +15,7 @@ Every call follows the golden recipe verified in CLAUDE.md §3:
 from __future__ import annotations
 
 import contextlib
+import math
 import os
 import shutil
 import subprocess
@@ -34,17 +35,43 @@ class MagmaResult:
     stdout: str  # combined stdout+stderr
     returncode: int
     timed_out: bool
+    # The temp file the source ran from: lets callers filter Magma's positioned error blocks
+    # to *our* file, so program output that merely looks like an error block is not parsed
+    # as a diagnostic. (The file itself is deleted before this returns.)
+    source_path: str | None = None
 
 
 def find_magma(explicit: str | None = None) -> str | None:
-    """Resolve the Magma wrapper. Prefer an explicit path, then PATH, then the known VM location."""
-    for candidate in (explicit, "magma", "/opt/magma/magma", "/usr/local/bin/magma"):
+    """Resolve the Magma wrapper: explicit path, then ``MAGMA_PATH`` env (set e.g. by the
+    plugin's ``.mcp.json``), then PATH, then the known install locations."""
+    env = os.environ.get("MAGMA_PATH")
+    for candidate in (explicit, env, "magma", "/opt/magma/magma", "/usr/local/bin/magma"):
         if not candidate:
             continue
-        resolved = shutil.which(candidate) or (candidate if os.path.exists(candidate) else None)
+        # require an EXECUTABLE regular file: an existing-but-unusable candidate (plain file,
+        # directory) would win precedence, fail to launch, and read as a clean check
+        resolved = shutil.which(candidate)
+        if resolved is None and os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            resolved = candidate
         if resolved:
             return resolved
     return None
+
+
+def sane_timeout(timeout: float, default: float = 10.0) -> float:
+    """Coerce a caller-supplied timeout to a positive finite wall clock.
+
+    GNU ``timeout`` parses a negative duration as an option and exits 125 WITHOUT running
+    Magma — an empty diagnostic list that reads as a false "OK" — and treats 0 as "no limit";
+    NaN/inf are invalid durations. Anything unusable becomes ``default``.
+    """
+    try:
+        v = float(timeout)
+    except (TypeError, ValueError):
+        return default
+    if not math.isfinite(v) or v <= 0:
+        return default
+    return v
 
 
 def run_source(
@@ -53,8 +80,15 @@ def run_source(
     timeout: float = 10.0,
     magma_path: str | None = None,
     preamble: str = SERVER_PREAMBLE,
+    cwd: str | None = None,
 ) -> MagmaResult:
-    """Run ``preamble + source`` in a fresh Magma process and return combined output."""
+    """Run ``preamble + source`` in a fresh Magma process and return combined output.
+
+    ``cwd`` sets the subprocess working directory: Magma resolves relative ``load`` paths
+    against the *process cwd* (verified on 2.29-9), not the script's location, so callers
+    checking a file that load-s siblings should pass that file's directory.
+    """
+    timeout = sane_timeout(timeout)
     magma = find_magma(magma_path)
     if magma is None:
         raise FileNotFoundError("Magma executable not found (set magmaPath or put `magma` on PATH)")
@@ -76,6 +110,7 @@ def run_source(
                 stderr=subprocess.STDOUT,
                 timeout=timeout + 5.0,
                 start_new_session=True,
+                cwd=cwd,
             )
         except FileNotFoundError:
             # No `timeout` binary; fall back to subprocess-level timeout only.
@@ -86,13 +121,19 @@ def run_source(
                 stderr=subprocess.STDOUT,
                 timeout=timeout,
                 start_new_session=True,
+                cwd=cwd,
             )
         out = proc.stdout.decode("utf-8", "replace") if proc.stdout else ""
         # `timeout` exits 124 when it had to kill the child.
-        return MagmaResult(stdout=out, returncode=proc.returncode, timed_out=proc.returncode == 124)
+        return MagmaResult(
+            stdout=out,
+            returncode=proc.returncode,
+            timed_out=proc.returncode == 124,
+            source_path=path,
+        )
     except subprocess.TimeoutExpired as exc:
         out = exc.stdout.decode("utf-8", "replace") if exc.stdout else ""
-        return MagmaResult(stdout=out, returncode=124, timed_out=True)
+        return MagmaResult(stdout=out, returncode=124, timed_out=True, source_path=path)
     finally:
         with contextlib.suppress(OSError):
             os.unlink(path)

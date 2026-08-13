@@ -31,7 +31,7 @@ def test_index_and_doc_from_synthetic_html(tmp_path):
         "<BLOCKQUOTE>\nReturns the foo of <I>x</I>.\n</BLOCKQUOTE>\n"
     )
     idx = HandbookIndex.load(str(tmp_path))
-    assert idx.entries == {"Foo": ("text9.htm", "42")}
+    assert idx.entries == {"Foo": [("text9.htm", "42")]}
     assert idx.doc_markdown("Foo") == "Returns the foo of x."
     assert idx.doc_markdown("Missing") is None
 

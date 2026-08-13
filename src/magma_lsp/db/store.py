@@ -33,10 +33,25 @@ def find_existing_db(version: str) -> Path | None:
 
 def newest_cached_db() -> Path | None:
     explicit = os.environ.get("MAGMA_LSP_DB")
-    if explicit and Path(explicit).exists():
-        return Path(explicit)
+    if explicit:
+        # An explicit path is a contract: honor it or report nothing, never silently fall
+        # back to an unrelated cache file.
+        p = Path(explicit)
+        return p if p.exists() else None
     d = cache_dir()
     if not d.is_dir():
         return None
     cands = sorted(d.glob("*.magmadb.json"), key=lambda p: p.stat().st_mtime, reverse=True)
     return cands[0] if cands else None
+
+
+def best_cached_db(preferred_version: str | None = None) -> Path | None:
+    """The DB to load: the explicit ``MAGMA_LSP_DB`` if set, else the exact artifact for
+    ``preferred_version`` (the installed Magma), else the newest cached one."""
+    if os.environ.get("MAGMA_LSP_DB"):
+        return newest_cached_db()
+    if preferred_version:
+        p = db_path_for_version(preferred_version)
+        if p.exists():
+            return p
+    return newest_cached_db()

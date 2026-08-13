@@ -65,20 +65,29 @@ def _clean_msg(msg: str, text: str, match_end: int) -> str:
     return msg.strip()
 
 
-def parse_diagnostics(text: str) -> list[MagmaDiagnostic]:
+def parse_diagnostics(text: str, *, expect_file: str | None = None) -> list[MagmaDiagnostic]:
+    """Extract Magma error blocks from ``text``.
+
+    When ``expect_file`` is given, positioned blocks naming any *other* file are dropped —
+    program output that happens to look like an error block (or errors in a driver file)
+    must not become diagnostics for the user's code.
+    """
     diags: list[MagmaDiagnostic] = []
     consumed_spans: list[tuple[int, int]] = []
 
     for regex, has_file in ((POSITIONED_RE, True), (EVAL_RE, False)):
         for m in regex.finditer(text):
-            consumed_spans.append(m.span())
+            consumed_spans.append(m.span())  # consumed even if filtered below
+            fname = m.group("file") if has_file else None
+            if expect_file is not None and has_file and fname != expect_file:
+                continue
             diags.append(
                 MagmaDiagnostic(
                     line=int(m.group("line")),
                     col=int(m.group("col")),
                     severity="error",
                     message=_clean_msg(m.group("msg"), text, m.end()),
-                    file=m.group("file") if has_file else None,
+                    file=fname,
                 )
             )
 

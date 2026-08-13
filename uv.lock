@@ -335,7 +335,7 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.6" },
     { name = "tree-sitter", specifier = ">=0.23" },
-    { name = "tree-sitter-magma", git = "https://github.com/edgarcosta/tree-sitter-magma" },
+    { name = "tree-sitter-magma", git = "https://github.com/edgarcosta/tree-sitter-magma?rev=75b31f4695261967c7aa87d552d69805dc03c77b" },
 ]
 provides-extras = ["dev"]
 
@@ -853,7 +853,7 @@ wheels = [
 [[package]]
 name = "tree-sitter-magma"
 version = "0.1.0"
-source = { git = "https://github.com/edgarcosta/tree-sitter-magma#75b31f4695261967c7aa87d552d69805dc03c77b" }
+source = { git = "https://github.com/edgarcosta/tree-sitter-magma?rev=75b31f4695261967c7aa87d552d69805dc03c77b#75b31f4695261967c7aa87d552d69805dc03c77b" }
 
 [[package]]
 name = "typing-extensions"
