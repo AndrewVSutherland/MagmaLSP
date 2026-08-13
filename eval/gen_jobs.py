@@ -24,6 +24,7 @@ import argparse
 import importlib.util
 import json
 import os
+import shlex
 from pathlib import Path
 
 ARMS = ("closed", "raw", "lsp")
@@ -117,8 +118,10 @@ def main() -> int:
             for k in range(args.trials):
                 out = os.path.join(args.jobdir, "out", f"job-{i}.json")
                 work = os.path.join(args.jobdir, "work", f"job-{i}")
+                # The workdir and repo root are interpolated into shell command lines the
+                # agent runs verbatim — quote them (a no-op for metacharacter-free paths).
                 spec_text = CORE.format(prompt=t["prompt"], out=out) + ARM_TEXT[arm].format(
-                    dir=work, repo=repo
+                    dir=shlex.quote(work), repo=shlex.quote(repo)
                 )
                 spec_path = os.path.join(args.jobdir, f"job-{i}.txt")
                 with open(spec_path, "w") as f:
