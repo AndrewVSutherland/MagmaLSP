@@ -16,6 +16,11 @@ took ~35 min at concurrency 14 on the dev box. One caveat vs the Sonnet runs: th
 uses the *current* CLI surface (adds `guide`/`search` and the pitfall/arity static checks, which
 did not exist for the Sonnet runs).
 
+**Provenance:** the committed generations (2026-08-12) were produced with the then-verbatim job
+templates, whose raw/lsp prompts hard-coded this repo's absolute path (`/home/claude/MagmaLSP`);
+`gen_jobs.py` has since been parameterized (repo root derived from the file's own location,
+`--repo-root` to override), so regenerated runs use the parameterized templates.
+
 ## Results (pass@1; Sonnet numbers from the earlier runs for comparison)
 
 | benchmark | arm | Sonnet | **Haiku 4.5** |
