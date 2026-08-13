@@ -50,10 +50,10 @@ def test_resolve_exact_operator_and_case():
 
 def test_arities_overloads_and_variadic():
     idx = SignatureIndex(_db())
-    assert idx.arities("Foo") == ({1, 2}, False)
-    counts, variadic = idx.arities("Sprintf")
-    assert variadic
-    assert counts == {1}  # base arity excludes the `...` slot
+    assert idx.arities("Foo") == ({1, 2}, None)
+    counts, variadic_min = idx.arities("Sprintf")
+    assert variadic_min == 1  # base arity excludes the `...` slot; accepts 1 or more
+    assert counts == set()  # no fixed overloads — the variadic min is tracked separately
     assert idx.arities("Nope") is None
 
 

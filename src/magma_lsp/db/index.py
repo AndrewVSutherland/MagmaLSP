@@ -67,22 +67,24 @@ class SignatureIndex:
         intr = self.db.get(name)
         return list(intr.signatures) if intr else []
 
-    def arities(self, name: str) -> tuple[set[int], bool] | None:
-        """Positional-argument counts accepted by ``name``'s overloads, plus a flag for
-        variadic overloads (which accept their base arity or more). None if unknown name."""
+    def arities(self, name: str) -> tuple[set[int], int | None] | None:
+        """Positional-argument counts accepted by ``name``'s fixed overloads, plus the
+        smallest base arity among its variadic overloads (those accept that many or more);
+        None if the name is unknown. The variadic minimum is tracked separately so a fixed
+        overload's count can't widen what the variadic form accepts."""
         intr = self.db.get(name)
         if intr is None:
             return None
         counts: set[int] = set()
-        variadic = False
+        variadic_min: int | None = None
         for s in intr.signatures:
             n_args = len(s.args)
             if any((p.type or "").strip() == "..." or p.name == "..." for p in s.args):
-                variadic = True
-                counts.add(max(0, n_args - 1))
+                base = max(0, n_args - 1)
+                variadic_min = base if variadic_min is None else min(variadic_min, base)
             else:
                 counts.add(n_args)
-        return counts, variadic
+        return counts, variadic_min
 
     @property
     def ref_arg_names(self) -> frozenset[str]:

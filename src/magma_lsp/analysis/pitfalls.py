@@ -49,7 +49,7 @@ def pitfall_lints(
     """
     data = source.encode("utf-8") if isinstance(source, str) else source
     tree = new_parser().parse(data)
-    available, _calls = analyze(data)
+    _available, _calls = analyze(data)
     # per-call, position-sensitive boundness (a rebinding in an unrelated scope, or later in
     # this one, does not shield a call): keyed by the call identifier's start point
     bound_at = {(cs.line, cs.col): cs.bound_in_scope for cs in _calls}
@@ -58,11 +58,18 @@ def pitfall_lints(
     # call NODES by name (not just names): the shadowing lint must compare scopes — a local
     # variable in one function does not shadow an intrinsic another function calls
     call_nodes: dict[str, list] = {}
+    lit_bindings: dict[str, list] = {}  # assignments to True/False/None (as variable names)
     _cstack = [tree.root_node]
     while _cstack:
         n = _cstack.pop()
         if n.type == "call" and n.children and n.children[0].type == "identifier":
             call_nodes.setdefault(node_text(n.children[0]), []).append(n)
+        elif n.type == "assignment":
+            for c in n.children:
+                if c.type == ":=":
+                    break
+                if c.type == "identifier" and node_text(c) in _PY_LITERALS:
+                    lit_bindings.setdefault(node_text(c), []).append(n)
         _cstack.extend(n.children)
     shadow_calls = set(call_nodes)
 
@@ -116,8 +123,15 @@ def pitfall_lints(
 
         elif t == "identifier" and not node.is_missing:
             txt = node_text(node)
-            if txt in _PY_LITERALS and txt not in available:
-                out.append(_lint(node, _PY_LITERALS[txt]))
+            if txt in _PY_LITERALS:
+                binds = lit_bindings.get(txt, [])
+                # suppressed only where a binding actually reaches this reference: inside
+                # the binding statement itself, or lexically after it in its scope (same
+                # reach rule as the shadowing lint — codex #12 round 15)
+                inside = any(b.start_byte <= node.start_byte < b.end_byte for b in binds)
+                reached = any(_shadowed_call_in_scope(b, [node]) for b in binds)
+                if not inside and not reached:
+                    out.append(_lint(node, _PY_LITERALS[txt]))
 
         elif t == "binary_operator":
             kids = node.children

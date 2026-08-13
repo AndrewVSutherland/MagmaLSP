@@ -20,9 +20,9 @@ from collections.abc import Callable
 from .lints import Lint
 from .scope import analyze
 
-# arities(name) -> (accepted_counts, has_variadic_overload) or None for unknown names —
-# the signature of SignatureIndex.arities.
-AritiesFn = Callable[[str], tuple[set[int], bool] | None]
+# arities(name) -> (fixed_overload_counts, min_variadic_base_arity_or_None) or None for
+# unknown names — the signature of SignatureIndex.arities.
+AritiesFn = Callable[[str], tuple[set[int], int | None] | None]
 
 
 def arity_problems(source: bytes | str, arities: AritiesFn) -> list[Lint]:
@@ -37,16 +37,18 @@ def arity_problems(source: bytes | str, arities: AritiesFn) -> list[Lint]:
         info = arities(cs.name)
         if info is None:
             continue
-        counts, variadic = info
-        if not counts:
+        counts, variadic_min = info
+        if not counts and variadic_min is None:
             continue
-        if cs.n_args in counts or (variadic and cs.n_args >= min(counts)):
+        if cs.n_args in counts or (variadic_min is not None and cs.n_args >= variadic_min):
             continue
         key = (cs.line, cs.col)
         if key in reported:
             continue
         reported.add(key)
-        accepted = ", ".join(str(n) for n in sorted(counts)) + (" or more" if variadic else "")
+        accepted = ", ".join(str(n) for n in sorted(counts))
+        if variadic_min is not None:
+            accepted += (", " if accepted else "") + f"{variadic_min} or more"
         out.append(
             Lint(
                 line=cs.line,

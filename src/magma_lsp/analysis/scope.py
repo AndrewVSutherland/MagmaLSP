@@ -144,7 +144,37 @@ def analyze(source: bytes | str) -> tuple[set[str], list[CallSite]]:
                 if c.type == "identifier":
                     bind(c.text.decode("utf-8", "replace"), scopes)
 
-        child_scopes = (*scopes, set()) if t in _SCOPE_TYPES else scopes
+        if t in _SCOPE_TYPES:
+            child_scopes: tuple[set[str], ...] = (*scopes, set())
+        else:
+            # Comprehension/quantifier binders (`[expr : x in S]`) and where-bindings
+            # (`expr where x is v`) appear AFTER the expression they govern in the parse
+            # tree; prebind them in a scope local to this node so the expression's calls
+            # see them (codex #12 round 15).
+            pre: set[str] | None = None
+            for c in node.children:
+                if c.type == "iter_vars":
+                    for iv in c.children:
+                        if iv.type != "iter_var":
+                            continue
+                        for k in iv.children:
+                            if k.type == "in":
+                                break
+                            if k.type == "identifier":
+                                pre = pre if pre is not None else set()
+                                nm = k.text.decode("utf-8", "replace")
+                                pre.add(nm)
+                                available.add(nm)
+            if t == "where_expression":
+                for c in node.children:
+                    if c.type in ("is", ":="):
+                        break
+                    if c.type == "identifier":
+                        pre = pre if pre is not None else set()
+                        nm = c.text.decode("utf-8", "replace")
+                        pre.add(nm)
+                        available.add(nm)
+            child_scopes = (*scopes, pre) if pre is not None else scopes
         for c in reversed(node.children):
             stack.append((c, child_scopes))
 

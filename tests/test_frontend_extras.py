@@ -180,6 +180,10 @@ def test_check_execute_surfaces_loaded_file_errors(tmp_path):
         filename=str(tmp_path / "main2.m"),
     )
     assert ok.ok, ok.report
+    # ...and printed positionless error text on a CLEAN exit is program output, not a
+    # diagnostic (codex #12 round 15)
+    ok2 = frontend.check('print "Runtime error: fake";\nprint 1;\n', execute=True)
+    assert ok2.ok, ok2.report
 
 
 @magma

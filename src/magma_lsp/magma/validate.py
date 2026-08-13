@@ -282,7 +282,15 @@ def execution_check(
     )
     diags: list[MagmaDiagnostic] = []
     for d in parse_diagnostics(res.stdout):
-        if d.file is None or (res.source_path and d.file == res.source_path):
+        if d.file is None:
+            # positionless/eval-shaped lines are trusted only when the exit status
+            # corroborates a failure: program OUTPUT can print error-looking text, and
+            # SetQuitOnError makes every real fatal error exit nonzero
+            if res.returncode == 0:
+                continue
+            diags.append(d)
+            continue
+        if res.source_path and d.file == res.source_path:
             diags.append(d)
             continue
         real = os.path.realpath(

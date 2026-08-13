@@ -5,11 +5,13 @@ from __future__ import annotations
 from magma_lsp.analysis.arity import arity_problems
 
 
-def fake_arities(name: str) -> tuple[set[int], bool] | None:
+def fake_arities(name: str) -> tuple[set[int], int | None] | None:
     if name == "Foo":
-        return {1, 2}, False
+        return {1, 2}, None
     if name == "Bar":
-        return {1}, True  # variadic: 1 or more
+        return set(), 1  # variadic: 1 or more
+    if name == "Mixed":
+        return {1}, 3  # fixed 1-arg overload PLUS a variadic needing >= 3
     return None
 
 
@@ -69,3 +71,22 @@ def test_rebinding_after_call_does_not_suppress():
 
 def test_unknown_names_never_flagged():
     assert arity_problems("Qux(1,2,3,4,5);\n", fake_arities) == []
+
+
+def test_variadic_minimum_not_widened_by_fixed_overload():
+    """A fixed 1-arg overload must not make the >=3 variadic overload accept 2 args
+    (codex #12 round 15)."""
+    assert arity_problems("Mixed(1);\n", fake_arities) == []
+    assert arity_problems("Mixed(1,2,3);\n", fake_arities) == []
+    assert arity_problems("Mixed(1,2,3,4);\n", fake_arities) == []
+    (lint,) = arity_problems("Mixed(1,2);\n", fake_arities)
+    assert "2 arguments" in lint.message and "3 or more" in lint.message
+
+
+def test_comprehension_iterator_call_not_flagged():
+    """`[Weight(1,2) : Weight in handlers]` calls the iterator value, not the intrinsic —
+    the binder appears after the expression in the parse tree (codex #12 round 15)."""
+    assert arity_problems("L := [Foo(1,2,3) : Foo in handlers];\n", fake_arities) == []
+    # an unrelated iterator does not shield the intrinsic call
+    (lint,) = arity_problems("L := [Foo(1,2,3) : x in S];\n", fake_arities)
+    assert "'Foo'" in lint.message

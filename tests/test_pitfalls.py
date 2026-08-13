@@ -129,6 +129,19 @@ def test_discarded_append_suppressed_by_in_scope_rebinding():
     assert pitfall_lints(src, ref_arg_intrinsics=frozenset({"Append"})) == []
 
 
+def test_python_literal_not_suppressed_by_unreachable_binding():
+    """A function-local `True := 1;` must not hide the True-literal lint at top level, and a
+    later binding does not reach an earlier reference (codex #12 round 15)."""
+    src = "f := function(x)\n    True := 1;\n    return True;\nend function;\nprint True;\n"
+    lints = [lint for lint in pitfall_lints(src) if "lowercase" in lint.message]
+    assert len(lints) == 1 and lints[0].line == 4  # only the top-level reference
+
+
+def test_python_literal_suppressed_after_in_scope_binding():
+    src = "True := 1;\nprint True;\n"
+    assert [lint for lint in pitfall_lints(src) if "lowercase" in lint.message] == []
+
+
 def test_double_slash_comment_suggests_div():
     (lint,) = pitfall_lints("q := a // b;\nprint q;\n")
     assert "div" in lint.message
