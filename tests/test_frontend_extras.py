@@ -148,3 +148,11 @@ def test_truncate_output_helper():
     long = "\n".join(f"line{i}" for i in range(1000))
     out, truncated = frontend._truncate_output(long, cap=500)
     assert truncated and "elided" in out and out.endswith("line999")
+
+
+def test_truncate_output_nonpositive_cap_still_truncates():
+    """cap=0 must not invert the budget: out[-0:] is the WHOLE string (codex #12 round 4)."""
+    long = "\n".join(f"line{i}" for i in range(1000))
+    for cap in (0, -5):
+        out, truncated = frontend._truncate_output(long, cap=cap)
+        assert truncated and len(out) < 2 * frontend._MIN_OUTPUT_CAP + 100, len(out)

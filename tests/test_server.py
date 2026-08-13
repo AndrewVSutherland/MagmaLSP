@@ -77,6 +77,23 @@ def test_workspace_scan_suppresses_cross_file_calls(tmp_path):
     assert not any("Helper" in d.message for d in after)
 
 
+def test_server_arity_skipped_on_unresolved_load(tmp_path):
+    """An unresolved load could redefine any intrinsic with any arity, so the editor arity
+    pass must go quiet — same guard as the undefined-name pass (codex #12 round 4)."""
+    ls = srv.MagmaLanguageServer()
+    ls.magma_available = False
+    ls.enable_lints = True
+    ls.index = _index()
+    ls.intrinsic_names = frozenset(ls.index.db.intrinsics)
+    bad_call = "x := Factorial(1, 2);\n"  # DB Factorial takes 1 arg
+    flagged = srv._compute_diagnostics(ls, bad_call, run_magma=False)
+    assert any("no overload" in d.message for d in flagged)
+    quiet = srv._compute_diagnostics(
+        ls, 'load "missing.m";\n' + bad_call, run_magma=False, base_dir=str(tmp_path)
+    )
+    assert not any("no overload" in d.message for d in quiet)
+
+
 def test_magma_undefined_workspace_name_downgraded_not_suppressed(monkeypatch, tmp_path):
     """Magma's authoritative undefined-identifier error must survive (as a warning) when the
     name is defined only in an unrelated workspace sibling — and stay an error when the name

@@ -381,9 +381,17 @@ def _remap_run_output(out: str, offset: int) -> str:
     return _TMPFILE_LOC_RE.sub(fix, out)
 
 
+_MIN_OUTPUT_CAP = 200  # floor for caller-supplied max_output
+
+
 def _truncate_output(out: str, cap: int) -> tuple[str, bool]:
     """Head+tail truncation at line boundaries; the tail is kept because Magma's error blocks
-    and final results are at the end."""
+    and final results are at the end.
+
+    ``cap`` is floored at ``_MIN_OUTPUT_CAP``: with ``cap <= 0`` the tail slice ``out[-0:]``
+    would keep the ENTIRE output while claiming truncation, inverting the budget.
+    """
+    cap = max(cap, _MIN_OUTPUT_CAP)
     if len(out) <= cap:
         return out, False
     head_budget, tail_budget = (cap * 2) // 5, (cap * 3) // 5

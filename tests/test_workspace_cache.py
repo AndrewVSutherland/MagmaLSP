@@ -50,6 +50,22 @@ def test_modified_file_is_rescanned(tmp_path):
     assert cache[key][1] == frozenset({"Gamma"})  # cache entry refreshed
 
 
+def test_same_mtime_different_size_edit_is_rescanned(tmp_path):
+    """A same-second edit (coarse filesystem timestamps) must not serve stale symbols: the
+    cache key is (mtime_ns, size), so a size-changing edit invalidates even when the mtime
+    is byte-identical (codex #12 round 4)."""
+    a = tmp_path / "a.m"
+    a.write_text("Alpha := 1;\n")
+    cache: dict = {}
+    scan_workspace([str(tmp_path)], cache=cache)
+    st = os.stat(a)
+    a.write_text("Gamma := 12345;\n")  # different size
+    os.utime(a, ns=(st.st_atime_ns, st.st_mtime_ns))  # restore the exact old mtime
+    scan = scan_workspace([str(tmp_path)], cache=cache)
+    assert "Gamma" in scan.names
+    assert "Alpha" not in scan.names
+
+
 def test_deleted_file_entry_is_evicted(tmp_path):
     a = tmp_path / "a.m"
     b = tmp_path / "b.m"

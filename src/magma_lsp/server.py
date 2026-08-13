@@ -322,7 +322,9 @@ def _compute_diagnostics(
             text, intrinsic_names=ls.intrinsic_names, ref_arg_intrinsics=ls.ref_arg_names
         ):
             diags.append(_lint_diagnostic(lint))
-        if ls.index is not None:
+        if ls.index is not None and not loads_unresolved:
+            # (unresolved load -> the target could redefine any intrinsic with any arity,
+            # so the pass is skipped entirely — same guard as the undefined-name pass)
             for lint in arity_problems(text, ls.index.arities):
                 m = re.search(r"'([^']+)'", lint.message)
                 if m and (m.group(1) in ls.workspace_symbols or m.group(1) in loaded_names):

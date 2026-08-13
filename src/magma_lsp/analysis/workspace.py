@@ -48,7 +48,7 @@ def _iter_files(roots: list[str], max_files: int) -> tuple[list[str], bool]:
 
 
 # cache type: path -> (mtime, that file's defined names)
-ScanCache = dict[str, tuple[float, frozenset[str]]]
+ScanCache = dict[str, tuple[tuple[int, int], frozenset[str]]]  # path -> ((mtime_ns, size), names)
 
 
 def scan_workspace(
@@ -69,12 +69,15 @@ def scan_workspace(
     scanned = 0
     for path in files:
         try:
-            mtime = os.stat(path).st_mtime
+            st = os.stat(path)
         except OSError:
             continue
+        # (mtime_ns, size): a bare float mtime can collide on filesystems with coarse
+        # timestamp resolution, silently serving stale symbols after a same-second edit
+        stamp = (st.st_mtime_ns, st.st_size)
         if cache is not None:
             hit = cache.get(path)
-            if hit is not None and hit[0] == mtime:
+            if hit is not None and hit[0] == stamp:
                 names |= hit[1]
                 scanned += 1
                 continue
@@ -88,7 +91,7 @@ def scan_workspace(
         except Exception:  # never let one bad file break the scan
             continue
         if cache is not None:
-            cache[path] = (mtime, file_names)
+            cache[path] = (stamp, file_names)
         names |= file_names
         scanned += 1
     if cache is not None:
