@@ -318,12 +318,21 @@ def _compute_diagnostics(
     # ---- static passes: always run (fast, offline, and they see ALL problems at once) ----
     static_undef_idents: dict[str, list[t.Diagnostic]] = {}
     if ls.enable_unknown_intrinsics and ls.intrinsic_names and not loads_unresolved:
-        known = ls.known_call_names() | loaded_names
+        # Workspace names are NOT folded into `known`: their reachability from this document
+        # is unproven, so they get the softened warning below — on every edit, not just on
+        # the save/open path where the Magma pass emits its equivalent.
+        known = ls.intrinsic_names | loaded_names
         for lint in undefined_intrinsics(text, known, suggest=ls.suggest):
             d = _lint_diagnostic(lint)
             m = re.match(r"'([^']+)'", lint.message)
-            if m:
-                static_undef_idents.setdefault(m.group(1), []).append(d)
+            name = m.group(1) if m else None
+            if name and name in ls.workspace_symbols:
+                d.message = (
+                    f"'{name}' is not defined in this file; a workspace file defines it — "
+                    "make sure that file is load-ed or attached when this file runs"
+                )
+            if name:
+                static_undef_idents.setdefault(name, []).append(d)
             diags.append(d)
 
     if ls.enable_lints:
@@ -363,25 +372,26 @@ def _compute_diagnostics(
                     if ident in loaded_names or ident in ls.intrinsic_names:
                         # proven reachable from this document: not an error in context
                         continue
+                    if ident in ls.workspace_symbols:
+                        # A workspace sibling defines the name, but nothing proves this
+                        # document loads/attaches that file — Magma's error is real for a
+                        # standalone run of this file, yet in spec/attach-style projects
+                        # the sibling is available at runtime. The signal stays a Warning
+                        # (never promoted): the static pass usually emitted it already.
+                        if ident not in static_undef_idents:
+                            w = _magma_diagnostic(d)
+                            w.severity = t.DiagnosticSeverity.Warning
+                            w.message += (
+                                f" (a workspace file defines '{ident}' — make sure that file"
+                                " is load-ed or attached when this file runs)"
+                            )
+                            diags.append(w)
+                        continue
                     if ident in static_undef_idents:
                         # the static diagnostic already covers it, with suggestions — and
                         # Magma's agreement makes it authoritative, so promote it to Error
                         for sd in static_undef_idents[ident]:
                             sd.severity = t.DiagnosticSeverity.Error
-                        continue
-                    if ident in ls.workspace_symbols:
-                        # A workspace sibling defines the name, but nothing proves this
-                        # document loads/attaches that file — Magma's error is real for a
-                        # standalone run of this file, yet in spec/attach-style projects
-                        # the sibling is available at runtime. Keep the signal, soften
-                        # the severity.
-                        w = _magma_diagnostic(d)
-                        w.severity = t.DiagnosticSeverity.Warning
-                        w.message += (
-                            f" (a workspace file defines '{ident}' — make sure that file"
-                            " is load-ed or attached when this file runs)"
-                        )
-                        diags.append(w)
                         continue
                 diags.append(_magma_diagnostic(d))
         except FileNotFoundError:
@@ -561,11 +571,15 @@ def _select_signature(sigs, n_commas: int) -> tuple[int, int]:
 
 
 def _active_parameter(call_node, pos: t.Position) -> int:
-    """Number of top-level ',' tokens in the argument list before the cursor."""
+    """Number of top-level ',' tokens in the POSITIONAL part of the argument list before the
+    cursor — commas after the ``:`` separate optional ``P := v`` arguments, which are not in
+    the signature's parameter list and must not advance the index."""
     n = 0
     for c in call_node.children:
         if c.type == "argument_list":
             for a in c.children:
+                if a.type == ":":
+                    return n
                 if a.type == "," and (
                     a.start_point[0] < pos.line
                     or (a.start_point[0] == pos.line and a.start_point[1] < pos.character)

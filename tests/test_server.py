@@ -59,7 +59,9 @@ def test_unknown_intrinsic_on_fast_path():
     assert not any("not a known intrinsic" in d.message for d in clean)
 
 
-def test_workspace_scan_suppresses_cross_file_calls(tmp_path):
+def test_workspace_scan_softens_cross_file_calls(tmp_path):
+    """A workspace sibling's definition softens the unknown-name diagnostic to the
+    reachability warning — on the STATIC (edit) path too, not silence (codex #12 round 11)."""
     (tmp_path / "lib.m").write_text("function Helper(x) return x; end function;\n")
     ls = srv.MagmaLanguageServer()
     ls.magma_available = False
@@ -68,13 +70,32 @@ def test_workspace_scan_suppresses_cross_file_calls(tmp_path):
     caller = "z := Helper(3);\n"
     # before scanning the project, the sibling-defined Helper looks undefined
     before = srv._compute_diagnostics(ls, caller, run_magma=False)
-    assert any("Helper" in d.message for d in before)
-    # after scanning the workspace, it is known
+    assert any("Helper" in d.message and "not a known intrinsic" in d.message for d in before)
+    # after scanning the workspace: softened warning, not silence and not "unknown"
     ls.workspace_roots = [str(tmp_path)]
     ls.rescan_workspace()
     assert "Helper" in ls.known_call_names()
     after = srv._compute_diagnostics(ls, caller, run_magma=False)
-    assert not any("Helper" in d.message for d in after)
+    hits = [d for d in after if "Helper" in d.message]
+    assert hits and all("load-ed or attached" in d.message for d in hits)
+    assert all(d.severity == t.DiagnosticSeverity.Warning for d in hits)
+
+
+def test_active_parameter_stops_at_optional_colon():
+    """Commas separating `: P := v` optional arguments are not positional separators
+    (codex #12 round 11)."""
+    text = "x := Foo(a : Al := 1, Proof := true);\n"
+    tree = srv.new_parser().parse(text.encode())
+    call = None
+    stack = [tree.root_node]
+    while stack:
+        n = stack.pop()
+        if n.type == "call":
+            call = n
+        stack.extend(n.children)
+    assert call is not None
+    # cursor at the very end of the argument list: only positional commas (none) count
+    assert srv._active_parameter(call, t.Position(0, 35)) == 0
 
 
 def test_invalidate_scanned_file_beats_stat_blind_edit(tmp_path):
@@ -163,10 +184,11 @@ def test_magma_undefined_workspace_name_downgraded_not_suppressed(monkeypatch, t
     ls.rescan_workspace()
     assert "Helper" in ls.workspace_symbols
 
-    # sibling-defined but not proven reachable -> downgraded to Warning, message explains why
+    # sibling-defined but not proven reachable -> a Warning that explains why (emitted by
+    # the static pass; the Magma duplicate is absorbed, never promoted to Error)
     monkeypatch.setattr(srv, "syntax_check", lambda *a, **k: fake_check("Helper"))
     diags = srv._compute_diagnostics(ls, "z := Helper(3);\n", run_magma=True)
-    hits = [d for d in diags if "Helper" in d.message and "declared" in d.message]
+    hits = [d for d in diags if "Helper" in d.message]
     assert hits, diags
     assert all(d.severity == t.DiagnosticSeverity.Warning for d in hits)
     assert any("load-ed or attached" in d.message for d in hits)

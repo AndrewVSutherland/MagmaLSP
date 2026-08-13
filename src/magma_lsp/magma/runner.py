@@ -48,7 +48,11 @@ def find_magma(explicit: str | None = None) -> str | None:
     for candidate in (explicit, env, "magma", "/opt/magma/magma", "/usr/local/bin/magma"):
         if not candidate:
             continue
-        resolved = shutil.which(candidate) or (candidate if os.path.exists(candidate) else None)
+        # require an EXECUTABLE regular file: an existing-but-unusable candidate (plain file,
+        # directory) would win precedence, fail to launch, and read as a clean check
+        resolved = shutil.which(candidate)
+        if resolved is None and os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            resolved = candidate
         if resolved:
             return resolved
     return None

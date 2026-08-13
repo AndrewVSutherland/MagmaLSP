@@ -177,6 +177,17 @@ def test_check_arity_skips_loaded_redefinitions(tmp_path):
     assert "no overload" in out2.report, out2.report
 
 
+def test_find_magma_skips_non_executable_candidate(tmp_path, monkeypatch):
+    """An existing but unusable MAGMA_PATH must not win precedence over a working magma —
+    it would fail to launch and read as a clean check (codex #12 round 11)."""
+    from magma_lsp.magma.runner import find_magma
+
+    bad = tmp_path / "not-magma"
+    bad.write_text("plain file, not executable")
+    monkeypatch.setenv("MAGMA_PATH", str(bad))
+    assert find_magma(None) != str(bad)  # skipped (may be None on boxes without Magma)
+
+
 def test_sane_timeout():
     from magma_lsp.magma.runner import sane_timeout
 
