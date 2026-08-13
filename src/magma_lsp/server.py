@@ -338,7 +338,12 @@ def _compute_diagnostics(
     ran_magma = False
     if use_magma:
         try:
-            res = syntax_check(text, magma_path=ls.magma_path, timeout=ls.magma_timeout)
+            res = syntax_check(
+                text,
+                magma_path=ls.magma_path,
+                timeout=ls.magma_timeout,
+                load_exports=frozenset(loaded_names) if not loads_unresolved else None,
+            )
             ran_magma = True
             if res.timed_out:
                 diags.append(_positionless_warning("Magma check timed out; results incomplete"))

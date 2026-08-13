@@ -41,12 +41,13 @@ def main() -> int:
         try:
             with open(j["out"]) as f:
                 r = json.load(f)
-            rec["code"] = r.get("code", "") or ""
+            code = r.get("code", "")
+            rec["code"] = code if isinstance(code, str) else ""  # a non-string can't be scored
             rec["n_runs"] = r.get("n_runs")
             rec["n_lookups"] = r.get("n_lookups")
             if not rec["code"]:
                 missing.append(j)
-        except (OSError, json.JSONDecodeError):
+        except (OSError, json.JSONDecodeError, AttributeError):
             missing.append(j)
         rows.append(rec)
 

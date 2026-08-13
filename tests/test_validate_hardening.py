@@ -75,6 +75,22 @@ def test_load_directive_does_not_break_or_false_flag():
 
 
 @magma
+@magma
+def test_load_exports_suppression_is_selective():
+    """With resolved loads, only binding errors for names the loads export are dropped; an
+    unrelated undeclared name survives — the only signal in no-DB mode (codex #12 round 6)."""
+    src = 'load "helpers.m";\nx := MissingHelper(1);\n'
+    # exports known and MissingHelper is not among them -> its binding error survives
+    res = syntax_check(src, load_exports=frozenset({"Helper"}))
+    assert any("MissingHelper" in d.message for d in res.diagnostics), res.diagnostics
+    # the exported name itself stays suppressed
+    res2 = syntax_check('load "helpers.m";\ny := Helper(1);\n', load_exports=frozenset({"Helper"}))
+    assert not any("Helper" in d.message for d in res2.diagnostics), res2.diagnostics
+    # unresolved loads (None) keep the conservative blanket suppression
+    res3 = syntax_check(src, load_exports=None)
+    assert not any("MissingHelper" in d.message for d in res3.diagnostics), res3.diagnostics
+
+
 def test_blank_out_loads_preserves_newlines():
     """A `load` whose string sits on the next line parses as one multi-line load_directive;
     blanking must keep its newline or every later diagnostic shifts up a line

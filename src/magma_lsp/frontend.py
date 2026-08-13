@@ -309,7 +309,12 @@ def check(
     inconclusive = False
     magma_diags: list[MagmaDiagnostic] = []
     try:
-        syn = syntax_check(source, magma_path=magma_path, timeout=min(timeout, 10.0))
+        syn = syntax_check(
+            source,
+            magma_path=magma_path,
+            timeout=min(timeout, 10.0),
+            load_exports=frozenset(loaded_names) if not loads_unresolved else None,
+        )
         magma_ran = True
         if syn.timed_out:
             inconclusive = True
@@ -344,7 +349,17 @@ def check(
 
     if not problems and not inconclusive and execute and magma_ran:
         ex = execution_check(source, magma_path=magma_path, timeout=timeout, cwd=base)
+        if ex.timed_out:
+            # a long-running computation is NOT invalid code — report it as inconclusive,
+            # never as FAIL (any real runtime errors emitted before the wall still count)
+            inconclusive = True
+            notes.append(
+                f"INCONCLUSIVE: execution pass timed out after {timeout:.0f}s; the code was "
+                "NOT validated to completion (raise timeout or reduce the computation)"
+            )
         for d in ex.diagnostics:
+            if ex.timed_out and d.positionless and "timed out" in d.message:
+                continue  # covered by the INCONCLUSIVE note above
             for line in fmt_diags([d], source):
                 problems.append((max(0, d.line - 1), max(0, d.col - 1), line))
 

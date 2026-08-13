@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import contextlib
 import os
+import re
 import tempfile
 import uuid
 from dataclasses import dataclass
@@ -159,16 +160,34 @@ def _blank_out_loads(source: str, root) -> tuple[str, bool]:
 # ----------------------------------------------------------------------------------------------
 # the two Magma-backed strategies
 # ----------------------------------------------------------------------------------------------
+_UNDECLARED_IDENT_RE = re.compile(r"Identifier '([^']+)' has not been declared")
+
+
 def _wrapped_check(
-    source: str, root, *, magma_path: str | None, timeout: float
+    source: str,
+    root,
+    *,
+    magma_path: str | None,
+    timeout: float,
+    load_exports: frozenset[str] | None = None,
 ) -> CheckResult:
     src, has_loads = _blank_out_loads(source, root)
     wrapped = f"{_SYNTAX_PREAMBLE}{src}\nreturn 0; end function;\n"
     res = run_source(wrapped, magma_path=magma_path, timeout=timeout, preamble="")
     diags = _shift(parse_diagnostics(res.stdout, expect_file=res.source_path), _SYNTAX_OFFSET)
     if has_loads:
-        # `load` can define anything; undefined-name reports would be false positives.
-        diags = [d for d in diags if "has not been declared" not in d.message]
+        if load_exports is None:
+            # `load` can define anything; undefined-name reports would be false positives.
+            diags = [d for d in diags if "has not been declared" not in d.message]
+        else:
+            # Loads resolved: drop only binding errors for names the loads actually export;
+            # an unrelated undeclared name is a real error and must survive (it is the ONLY
+            # signal in no-DB mode, where the static name pass doesn't run).
+            def _keep(d: MagmaDiagnostic) -> bool:
+                m = _UNDECLARED_IDENT_RE.search(d.message)
+                return m is None or m.group(1) not in load_exports
+
+            diags = [d for d in diags if _keep(d)]
     return CheckResult(diagnostics=_fit_to_source(diags, source), timed_out=res.timed_out)
 
 
@@ -196,8 +215,17 @@ def _attach_check(source: str, *, magma_path: str | None, timeout: float) -> Che
 # public entry points
 # ----------------------------------------------------------------------------------------------
 def syntax_check(
-    source: str, *, magma_path: str | None = None, timeout: float = 10.0
+    source: str,
+    *,
+    magma_path: str | None = None,
+    timeout: float = 10.0,
+    load_exports: frozenset[str] | None = None,
 ) -> CheckResult:
+    """``load_exports``: names the caller proved are exported by the document's *resolved*
+    ``load`` targets. When given, only binding errors for those names are suppressed in
+    load-bearing files (Magma can't see the blanked loads); unrelated undeclared names still
+    surface. When ``None`` (loads unresolved, or the caller didn't resolve), ALL binding
+    errors are suppressed in load-bearing files — the load could define anything."""
     tree = new_parser().parse(source.encode("utf-8"))
     root = tree.root_node
     if root.has_error:
@@ -207,7 +235,9 @@ def syntax_check(
         return CheckResult(diagnostics=_tree_sitter_diags(root), timed_out=False)
     if _contains_intrinsic(root):
         return _attach_check(source, magma_path=magma_path, timeout=timeout)
-    return _wrapped_check(source, root, magma_path=magma_path, timeout=timeout)
+    return _wrapped_check(
+        source, root, magma_path=magma_path, timeout=timeout, load_exports=load_exports
+    )
 
 
 def execution_check(

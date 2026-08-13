@@ -28,6 +28,24 @@ def test_check_inconclusive_on_timeout(monkeypatch):
     assert "INCONCLUSIVE" in out.report
 
 
+def test_check_execute_timeout_is_inconclusive_not_fail(monkeypatch):
+    """A long-running computation is not invalid code (codex #12 round 6)."""
+    from magma_lsp.magma.diagnostics import MagmaDiagnostic
+
+    monkeypatch.setattr(
+        frontend, "syntax_check", lambda *a, **k: CheckResult(diagnostics=[], timed_out=False)
+    )
+    timeout_diag = MagmaDiagnostic(1, 1, "warning", "Magma check timed out", positionless=True)
+    monkeypatch.setattr(
+        frontend,
+        "execution_check",
+        lambda *a, **k: CheckResult(diagnostics=[timeout_diag], timed_out=True),
+    )
+    out = frontend.check("x := Factorial(10^9);\n", index=None, execute=True)
+    assert not out.ok
+    assert "INCONCLUSIVE" in out.report and "FAIL" not in out.report
+
+
 def test_check_degrades_without_magma(monkeypatch):
     def raise_missing(*a, **k):
         raise FileNotFoundError("no magma")

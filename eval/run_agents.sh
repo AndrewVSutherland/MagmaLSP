@@ -22,11 +22,13 @@ import json, os, sys
 jd = sys.argv[1]
 
 def done(path):
-    # complete = parseable JSON with nonempty code; an empty/truncated/invalid
-    # out-file (agent died mid-write) must be retried, not skipped forever
+    # complete = parseable JSON whose "code" is a nonempty STRING; an empty/truncated/
+    # invalid/mistyped out-file (agent died mid-write, or wrote e.g. a list) must be
+    # retried, not skipped forever
     try:
         with open(path) as f:
-            return bool(json.load(f).get("code"))
+            c = json.load(f).get("code")
+        return isinstance(c, str) and bool(c.strip())
     except (OSError, json.JSONDecodeError, AttributeError):
         return False
 
