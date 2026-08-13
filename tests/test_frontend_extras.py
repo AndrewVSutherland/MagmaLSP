@@ -168,6 +168,23 @@ def test_check_arity_skips_loaded_redefinitions(tmp_path):
     assert "no overload" in out2.report, out2.report
 
 
+def test_sane_timeout():
+    from magma_lsp.magma.runner import sane_timeout
+
+    assert sane_timeout(5.0) == 5.0
+    for bad in (-1.0, 0, float("nan"), float("inf"), "soon"):
+        assert sane_timeout(bad, default=30.0) == 30.0
+
+
+@magma
+def test_check_negative_timeout_still_checks():
+    """timeout=-1 became `timeout -1 magma ...` -> GNU timeout exit 125, Magma never ran, and
+    the empty diagnostics read as a false OK (codex #12 round 8)."""
+    out = frontend.check("x := 1/0;\nprint x;\n", timeout=-1.0, execute=True)
+    assert not out.ok
+    assert "zero denominator" in out.report
+
+
 def test_truncate_output_helper():
     out, truncated = frontend._truncate_output("x" * 10, cap=100)
     assert not truncated and out == "x" * 10

@@ -28,7 +28,7 @@ from .db.index import SignatureIndex
 from .db.store import best_cached_db
 from .handbook import HandbookIndex
 from .magma.diagnostics import MagmaDiagnostic
-from .magma.runner import find_magma, run_source
+from .magma.runner import find_magma, run_source, sane_timeout
 from .magma.validate import execution_check, syntax_check
 
 # Memory ceiling for the execution path. The trusted-colleague sandbox is timeout + memory limit
@@ -244,6 +244,7 @@ def check(
     Degrades honestly: without Magma it reports static findings with an explicit note; a
     timed-out Magma pass is INCONCLUSIVE, never OK.
     """
+    timeout = sane_timeout(timeout, default=30.0)  # negative/0/NaN would falsify the check
     idx = index if index is not None else load_index()
     notes: list[str] = []
     # (line0, col0, rendered) triples so findings from all passes interleave in source order
@@ -442,6 +443,7 @@ def run(
     ``load`` paths resolve as they would running the file in place (Magma resolves them
     against the process cwd).
     """
+    timeout = sane_timeout(timeout, default=30.0)
     preamble = _RUN_PREAMBLE + f"SetMemoryLimit({memory_bytes});\nSetQuitOnError(true);\n"
     offset = preamble.count("\n")
     cwd = os.path.dirname(os.path.abspath(filename)) if filename else None

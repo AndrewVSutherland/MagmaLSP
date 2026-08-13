@@ -15,6 +15,7 @@ Every call follows the golden recipe verified in CLAUDE.md §3:
 from __future__ import annotations
 
 import contextlib
+import math
 import os
 import shutil
 import subprocess
@@ -53,6 +54,22 @@ def find_magma(explicit: str | None = None) -> str | None:
     return None
 
 
+def sane_timeout(timeout: float, default: float = 10.0) -> float:
+    """Coerce a caller-supplied timeout to a positive finite wall clock.
+
+    GNU ``timeout`` parses a negative duration as an option and exits 125 WITHOUT running
+    Magma — an empty diagnostic list that reads as a false "OK" — and treats 0 as "no limit";
+    NaN/inf are invalid durations. Anything unusable becomes ``default``.
+    """
+    try:
+        v = float(timeout)
+    except (TypeError, ValueError):
+        return default
+    if not math.isfinite(v) or v <= 0:
+        return default
+    return v
+
+
 def run_source(
     source: str,
     *,
@@ -67,6 +84,7 @@ def run_source(
     against the *process cwd* (verified on 2.29-9), not the script's location, so callers
     checking a file that load-s siblings should pass that file's directory.
     """
+    timeout = sane_timeout(timeout)
     magma = find_magma(magma_path)
     if magma is None:
         raise FileNotFoundError("Magma executable not found (set magmaPath or put `magma` on PATH)")
