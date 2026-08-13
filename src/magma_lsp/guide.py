@@ -88,6 +88,10 @@ _SANDBOX_NOTES = {
         "UNAVAILABLE (no `bwrap` on PATH) — executed code runs with the caller's full\n"
         "filesystem access; install bubblewrap to enable the read-only sandbox."
     ),
+    "broken": (
+        "BROKEN (bwrap is installed but cannot create a sandbox here — user namespaces\n"
+        "disabled?) — executed code runs with the caller's full filesystem access."
+    ),
 }
 
 

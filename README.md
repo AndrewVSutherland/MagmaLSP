@@ -113,9 +113,11 @@ still be spawned, but it runs against the same read-only filesystem. The parse-o
 passes execute nothing user-level and are not sandboxed, which keeps the every-edit syntax check
 at its measured ~12.5 ms.
 
-Policy: **on automatically** when `bwrap` is present; set `MAGMA_LSP_NO_SANDBOX=1` in the server's
-environment to opt out; without bwrap (e.g. macOS, untested anyway) execution passes run
-unsandboxed and a loud one-time warning on stderr says so. Programs that legitimately write output
+Policy: **on automatically** when `bwrap` is present and working — a one-time probe detects hosts
+where bwrap exists but cannot create namespaces (unprivileged user namespaces disabled, common
+inside containers) and falls back rather than failing every run. Set `MAGMA_LSP_NO_SANDBOX=1` in
+the server's environment to opt out; without (working) bwrap — e.g. macOS, untested anyway —
+execution passes run unsandboxed and a loud one-time warning on stderr says so. Programs that legitimately write output
 files can be granted specific directories with `MAGMA_LSP_SANDBOX_WRITABLE=/path/a:/path/b`
 (bind-mounted read-write; unset by default). `magma_guide()` reports the live sandbox state, and
 the `magma_run`/`magma_check` tool docs tell the agent up front that writes will fail.

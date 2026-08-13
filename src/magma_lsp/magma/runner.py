@@ -94,19 +94,55 @@ def _warn_once(key: str, message: str) -> None:
         print(message, file=sys.stderr)
 
 
+_bwrap_ok: bool | None = None  # per-process cache of the functional probe
+
+
+def _bwrap_functional(bwrap: str) -> bool:
+    """Cached probe that the recipe actually works on this host: bwrap can be installed yet
+    unable to create namespaces (unprivileged user namespaces disabled — common inside
+    containers), in which case every sandboxed run would fail at launch instead of running
+    unsandboxed-with-a-warning. Probed once per process with the real flag set."""
+    global _bwrap_ok
+    if _bwrap_ok is None:
+        try:
+            proc = subprocess.run(
+                [bwrap, "--ro-bind", "/", "/", "--tmpfs", "/tmp", "--dev", "/dev",
+                 "--proc", "/proc", "--unshare-pid", "--unshare-ipc", "--new-session",
+                 "--die-with-parent", "/bin/true"],
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=10.0,
+            )
+            _bwrap_ok = proc.returncode == 0
+        except (OSError, subprocess.TimeoutExpired):
+            _bwrap_ok = False
+    return _bwrap_ok
+
+
+def _resolve_sandbox() -> tuple[str, str | None]:
+    """(state, bwrap path when state == "active")."""
+    if os.environ.get(NO_SANDBOX_ENV, "") not in ("", "0"):
+        return "disabled", None
+    bwrap = shutil.which("bwrap")
+    if bwrap is None:
+        return "unavailable", None
+    if not _bwrap_functional(bwrap):
+        return "broken", None
+    return "active", bwrap
+
+
 def sandbox_state() -> str:
     """The sandbox policy for this process, as it will apply to execution passes.
 
-    ``"active"``   — bwrap found and not opted out: execution passes are sandboxed.
-    ``"disabled"`` — opted out via ``MAGMA_LSP_NO_SANDBOX``.
-    ``"unavailable"`` — no ``bwrap`` on PATH (e.g. macOS): execution passes run unsandboxed
-    with a one-time warning.
+    ``"active"``      — bwrap found and working, not opted out: execution passes are sandboxed.
+    ``"disabled"``    — opted out via ``MAGMA_LSP_NO_SANDBOX``.
+    ``"unavailable"`` — no ``bwrap`` on PATH (e.g. macOS).
+    ``"broken"``      — bwrap present but cannot create a sandbox here (user namespaces
+    disabled, e.g. in some containers). The last two run execution passes unsandboxed with a
+    one-time warning.
     """
-    if os.environ.get(NO_SANDBOX_ENV, "") not in ("", "0"):
-        return "disabled"
-    if shutil.which("bwrap") is None:
-        return "unavailable"
-    return "active"
+    return _resolve_sandbox()[0]
 
 
 def _writable_dirs() -> list[str]:
@@ -138,7 +174,7 @@ def _sandbox_argv(source_path: str, cwd: str | None) -> list[str]:
 
     ``--unshare-net`` must never be added (breaks Magma licensing — see module comment).
     """
-    state = sandbox_state()
+    state, bwrap = _resolve_sandbox()
     if state == "disabled":
         return []
     if state == "unavailable":
@@ -149,7 +185,16 @@ def _sandbox_argv(source_path: str, cwd: str | None) -> list[str]:
             f"or set {NO_SANDBOX_ENV}=1 to accept and silence this warning.",
         )
         return []
-    argv = [shutil.which("bwrap") or "bwrap", "--ro-bind", "/", "/", "--tmpfs", "/tmp"]
+    if state == "broken":
+        _warn_once(
+            "broken-bwrap",
+            "magma-lsp: bwrap is installed but cannot create a sandbox on this host "
+            "(unprivileged user namespaces disabled? common inside containers) — Magma "
+            "EXECUTION passes run WITHOUT the OS sandbox (file writes by executed code are "
+            f"not blocked). Set {NO_SANDBOX_ENV}=1 to accept and silence this warning.",
+        )
+        return []
+    argv = [bwrap, "--ro-bind", "/", "/", "--tmpfs", "/tmp"]
     if cwd:
         cwd = os.path.abspath(cwd)
         argv += ["--ro-bind", cwd, cwd]

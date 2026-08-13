@@ -88,7 +88,9 @@ allocator escapes vsize); for a hard OS bound use a cgroup (`systemd-run --scope
 
 Execution passes (`magma_run`, `magma_check(execute=True)`, eval scoring — NOT the parse-only
 syntax strategies) run under bwrap when present (`magma/runner.py:_sandbox_argv`, policy
-`sandbox_state()`; opt-out `MAGMA_LSP_NO_SANDBOX=1`, writable escape hatch
+`sandbox_state()`: active/disabled/unavailable/**broken** — a cached one-shot probe catches
+hosts where bwrap exists but user namespaces are disabled (common in containers) and falls back
+to unsandboxed-with-a-warning; opt-out `MAGMA_LSP_NO_SANDBOX=1`, writable escape hatch
 `MAGMA_LSP_SANDBOX_WRITABLE=dir:dir`). Verified facts that constrain the recipe:
 
 - Working shape (tested end-to-end: licensed run OK, `System("touch …")` write FAILS):

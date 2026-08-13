@@ -21,16 +21,23 @@ from magma_lsp.magma.runner import (
 
 _HAS_MAGMA = shutil.which("magma") is not None or os.path.exists("/opt/magma/magma")
 _HAS_BWRAP = shutil.which("bwrap") is not None
+# priming the probe here caches the host's true answer; unit tests pin their own copy
+_BWRAP_WORKS = _HAS_BWRAP and runner._bwrap_functional(shutil.which("bwrap"))
 magma = pytest.mark.skipif(not _HAS_MAGMA, reason="requires a Magma install")
 needs_bwrap = pytest.mark.skipif(not _HAS_BWRAP, reason="requires bubblewrap (bwrap)")
+needs_working_bwrap = pytest.mark.skipif(
+    not _BWRAP_WORKS, reason="requires bubblewrap able to create namespaces on this host"
+)
 
 
-def _fresh_policy(monkeypatch, *, bwrap="/usr/bin/bwrap"):
+def _fresh_policy(monkeypatch, *, bwrap="/usr/bin/bwrap", works=True):
     """Deterministic sandbox policy for unit tests: no opt-out, no writable dirs, bwrap as
-    given (None = absent), and the warn-once registry reset."""
+    given (None = absent), the functional probe pinned (no real bwrap runs), and the
+    warn-once registry reset."""
     monkeypatch.delenv(NO_SANDBOX_ENV, raising=False)
     monkeypatch.delenv(SANDBOX_WRITABLE_ENV, raising=False)
     monkeypatch.setattr(runner.shutil, "which", lambda name: bwrap)
+    monkeypatch.setattr(runner, "_bwrap_ok", works)
     monkeypatch.setattr(runner, "_warned_once", set())
 
 
@@ -69,6 +76,17 @@ def test_missing_bwrap_warns_once_and_runs_unsandboxed(monkeypatch, capsys):
     assert _sandbox_argv("/tmp/src.m", None) == []
     err = capsys.readouterr().err
     assert err.count("WITHOUT the OS sandbox") == 1
+
+
+def test_broken_bwrap_warns_once_and_runs_unsandboxed(monkeypatch, capsys):
+    # bwrap on PATH but the functional probe fails (e.g. user namespaces disabled in a
+    # container): fall back to unsandboxed-with-a-warning instead of failing every run
+    _fresh_policy(monkeypatch, works=False)
+    assert sandbox_state() == "broken"
+    assert _sandbox_argv("/tmp/src.m", None) == []
+    assert _sandbox_argv("/tmp/src.m", None) == []
+    err = capsys.readouterr().err
+    assert err.count("cannot create a sandbox") == 1
 
 
 # ------------------------------------------------------------------ argv shape
@@ -183,13 +201,27 @@ def test_guide_reports_sandbox_state(monkeypatch):
     monkeypatch.delenv(NO_SANDBOX_ENV)
     monkeypatch.setattr(runner.shutil, "which", lambda name: None)
     assert "UNAVAILABLE" in guide()
+    monkeypatch.setattr(runner.shutil, "which", lambda name: "/usr/bin/bwrap")
+    monkeypatch.setattr(runner, "_bwrap_ok", False)
+    assert "BROKEN" in guide()
 
 
 # ------------------------------------------------------------------ end-to-end (magma + bwrap)
 
 
-@magma
 @needs_bwrap
+def test_real_bwrap_probe_resolves(monkeypatch):
+    # the one test that runs _bwrap_functional for real (not pinned). A host can have bwrap
+    # yet restrict user namespaces (some CI/containers), so "broken" is a legitimate outcome
+    # there; the write-blocking tests below are the proof of "active" where Magma exists.
+    monkeypatch.delenv(NO_SANDBOX_ENV, raising=False)
+    monkeypatch.setattr(runner, "_bwrap_ok", None)
+    assert sandbox_state() in ("active", "broken")
+    assert runner._bwrap_ok is not None  # probe ran and cached
+
+
+@magma
+@needs_working_bwrap
 def test_sandboxed_write_is_blocked_and_output_intact(tmp_path, monkeypatch):
     monkeypatch.delenv(NO_SANDBOX_ENV, raising=False)
     target = tmp_path / "pwned.txt"
@@ -199,7 +231,7 @@ def test_sandboxed_write_is_blocked_and_output_intact(tmp_path, monkeypatch):
 
 
 @magma
-@needs_bwrap
+@needs_working_bwrap
 def test_sandboxed_execution_check_blocks_write_in_own_cwd(tmp_path, monkeypatch):
     # cwd is ro-bound back over the /tmp tmpfs: visible for reads, still not writable
     monkeypatch.delenv(NO_SANDBOX_ENV, raising=False)
@@ -212,7 +244,7 @@ def test_sandboxed_execution_check_blocks_write_in_own_cwd(tmp_path, monkeypatch
 
 
 @magma
-@needs_bwrap
+@needs_working_bwrap
 def test_sandboxed_relative_load_still_resolves(tmp_path, monkeypatch):
     monkeypatch.delenv(NO_SANDBOX_ENV, raising=False)
     (tmp_path / "sib.m").write_text("sibf := func<n | n + 41>;\n", encoding="utf-8")
@@ -224,7 +256,7 @@ def test_sandboxed_relative_load_still_resolves(tmp_path, monkeypatch):
 
 
 @magma
-@needs_bwrap
+@needs_working_bwrap
 def test_opt_out_env_really_disables_sandbox(tmp_path, monkeypatch):
     monkeypatch.setenv(NO_SANDBOX_ENV, "1")
     target = tmp_path / "written.txt"
@@ -234,7 +266,7 @@ def test_opt_out_env_really_disables_sandbox(tmp_path, monkeypatch):
 
 
 @magma
-@needs_bwrap
+@needs_working_bwrap
 def test_writable_dir_escape_hatch(tmp_path, monkeypatch):
     monkeypatch.delenv(NO_SANDBOX_ENV, raising=False)
     monkeypatch.setenv(SANDBOX_WRITABLE_ENV, str(tmp_path))
@@ -248,7 +280,7 @@ def test_writable_dir_escape_hatch(tmp_path, monkeypatch):
 
 
 @magma
-@needs_bwrap
+@needs_working_bwrap
 def test_sandboxed_timeout_still_enforced(monkeypatch):
     monkeypatch.delenv(NO_SANDBOX_ENV, raising=False)
     res = frontend.run("x := 0;\nwhile true do x +:= 1; end while;", timeout=2)
@@ -256,7 +288,7 @@ def test_sandboxed_timeout_still_enforced(monkeypatch):
 
 
 @magma
-@needs_bwrap
+@needs_working_bwrap
 def test_sandboxed_memory_limit_still_enforced(monkeypatch):
     monkeypatch.delenv(NO_SANDBOX_ENV, raising=False)
     res = validate.execution_check(
