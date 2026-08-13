@@ -135,14 +135,21 @@ def _contains_intrinsic(root) -> bool:
 
 
 def _blank_out_loads(source: str, root) -> tuple[str, bool]:
-    """Replace ``load "..."`` directives with spaces (same byte length -> positions intact)."""
+    """Replace ``load "..."`` directives with spaces (same byte length -> positions intact).
+
+    Newlines inside the node are preserved: a ``load`` whose string sits on the next line
+    parses as one multi-line ``load_directive``, and blanking its newline would shift every
+    subsequent diagnostic up a line.
+    """
     data = bytearray(source.encode("utf-8"))
     found = False
     stack = [root]
     while stack:
         node = stack.pop()
         if node.type == "load_directive":
-            data[node.start_byte : node.end_byte] = b" " * (node.end_byte - node.start_byte)
+            for i in range(node.start_byte, node.end_byte):
+                if data[i] not in (0x0A, 0x0D):  # keep \n / \r
+                    data[i] = 0x20
             found = True
             continue
         stack.extend(node.children)

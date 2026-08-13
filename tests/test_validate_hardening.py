@@ -75,6 +75,23 @@ def test_load_directive_does_not_break_or_false_flag():
 
 
 @magma
+def test_blank_out_loads_preserves_newlines():
+    """A `load` whose string sits on the next line parses as one multi-line load_directive;
+    blanking must keep its newline or every later diagnostic shifts up a line
+    (codex #12 round 5)."""
+    from magma_lsp.magma.validate import _blank_out_loads
+    from magma_lsp.parsing import new_parser
+
+    src = 'x := 1;\nload\n"a.m";\ny := 2;\n'
+    root = new_parser().parse(src.encode()).root_node
+    blanked, found = _blank_out_loads(src, root)
+    assert found
+    assert len(blanked) == len(src)
+    assert blanked.count("\n") == src.count("\n")
+    assert '"a.m"' not in blanked and "load" not in blanked
+    assert blanked.splitlines()[3] == "y := 2;"  # line numbers intact
+
+
 def test_tab_column_mapped_to_char_offset():
     src = "\tx := 2 +;\n"
     res = syntax_check(src)

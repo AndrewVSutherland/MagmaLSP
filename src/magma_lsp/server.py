@@ -516,7 +516,8 @@ def signature_help(
     sigs = ls.index.signatures(name)
     if not sigs:
         return None
-    active_param = _active_parameter(call, params.position)
+    shown = sigs[:25]
+    active_sig, active_param = _select_signature(shown, _active_parameter(call, params.position))
     infos = [
         t.SignatureInformation(
             label=_sig_label(s),
@@ -528,9 +529,21 @@ def signature_help(
                 for a in s.args
             ],
         )
-        for s in sigs[:25]
+        for s in shown
     ]
-    return t.SignatureHelp(signatures=infos, active_signature=0, active_parameter=active_param)
+    return t.SignatureHelp(
+        signatures=infos, active_signature=active_sig, active_parameter=active_param
+    )
+
+
+def _select_signature(sigs, n_commas: int) -> tuple[int, int]:
+    """Pick the overload the cursor position fits (first with more args than commas typed;
+    else the widest) and clamp the active parameter inside it — an index past the active
+    signature's parameter list makes clients omit or mis-highlight the help."""
+    idx = next((i for i, s in enumerate(sigs) if len(s.args) > n_commas), None)
+    if idx is None:
+        idx = max(range(len(sigs)), key=lambda i: len(sigs[i].args))
+    return idx, min(n_commas, max(0, len(sigs[idx].args) - 1))
 
 
 def _active_parameter(call_node, pos: t.Position) -> int:

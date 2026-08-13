@@ -77,6 +77,24 @@ def test_workspace_scan_suppresses_cross_file_calls(tmp_path):
     assert not any("Helper" in d.message for d in after)
 
 
+def test_select_signature_picks_fitting_overload_and_clamps():
+    """The active signature must fit the commas typed, and the active parameter must stay
+    inside it (codex #12 round 5)."""
+
+    def sig(n):
+        return Signature(name="F", args=[Param(f"a{i}", "RngIntElt") for i in range(n)])
+
+    # two commas typed -> the 1-arg overload can't be active; the 3-arg one is
+    idx, param = srv._select_signature([sig(1), sig(3)], 2)
+    assert (idx, param) == (1, 2)
+    # more commas than ANY overload takes -> widest overload, param clamped to its last slot
+    idx, param = srv._select_signature([sig(1), sig(3)], 7)
+    assert (idx, param) == (1, 2)
+    # zero-arg-only overloads never yield a negative index
+    idx, param = srv._select_signature([sig(0)], 4)
+    assert (idx, param) == (0, 0)
+
+
 def test_server_arity_skipped_on_unresolved_load(tmp_path):
     """An unresolved load could redefine any intrinsic with any arity, so the editor arity
     pass must go quiet — same guard as the undefined-name pass (codex #12 round 4)."""

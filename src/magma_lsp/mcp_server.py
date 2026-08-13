@@ -81,7 +81,7 @@ def magma_search(query: str, limit: int = 10) -> str:
     Returns:
         Ranked "Signature — one-line doc" rows, or a no-match note with advice.
     """
-    return frontend.search(query, limit=min(int(limit), 25), index=_index()).text
+    return frontend.search(query, limit=max(1, min(int(limit), 25)), index=_index()).text
 
 
 @mcp.tool()

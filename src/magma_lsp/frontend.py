@@ -173,7 +173,8 @@ def search(
     idx = index if index is not None else load_index()
     if idx is None:
         return SearchResult(f"error: no signature DB; {_BUILD_HINT}", 0)
-    hits = idx.search(query, limit=limit)
+    # clamp: limit<=0 would slice as scored[:-n] and return nearly everything
+    hits = idx.search(query, limit=max(1, min(limit, 50)))
     if not hits:
         return SearchResult(
             f'no matches for "{query}". Try fewer/different keywords (the search covers '
