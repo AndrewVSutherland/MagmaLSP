@@ -1,0 +1,22 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      # uv-managed Pythons bundle the C headers tree-sitter-magma's build needs;
+      # don't rely on the runner's system Python having python3-dev.
+      - run: uv python install 3.12
+      - run: uv sync --extra dev
+      - run: uv run ruff check src tests
+      # Magma-dependent tests carry `magma` skip markers, so the suite passes on a
+      # runner with no Magma install (static-only coverage).
+      - run: uv run pytest -q
