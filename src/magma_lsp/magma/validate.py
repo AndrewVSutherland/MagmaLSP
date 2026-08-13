@@ -209,6 +209,7 @@ def execution_check(
     magma_path: str | None = None,
     timeout: float = 15.0,
     memory_bytes: int = 2 * 1024 * 1024 * 1024,
+    cwd: str | None = None,
 ) -> CheckResult:
     preamble = (
         "SetColumns(0);\n"
@@ -219,7 +220,9 @@ def execution_check(
         "SetQuitOnError(true);\n"
     )
     offset = preamble.count("\n")
-    res = run_source(preamble + source + "\n", magma_path=magma_path, timeout=timeout, preamble="")
+    res = run_source(
+        preamble + source + "\n", magma_path=magma_path, timeout=timeout, preamble="", cwd=cwd
+    )
     diags = _shift(parse_diagnostics(res.stdout, expect_file=res.source_path), offset)
     diags = _fit_to_source(diags, source)
     if res.timed_out:

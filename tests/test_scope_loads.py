@@ -33,6 +33,35 @@ def test_load_defined_symbols_counts_missing_file(tmp_path):
     assert names == set()
 
 
+def test_load_defined_symbols_transitive(tmp_path):
+    """a.m load-s b.m; b.m's symbols reach the top-level document. Nested relative targets
+    resolve against the SAME base dir (Magma resolves loads against the process cwd — verified
+    on 2.29-9), so b.m's path here is base-relative even though the load appears in sub/a.m."""
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "sub" / "a.m").write_text(
+        'load "sub/b.m";\nfunction FromA(x) return x; end function;\n'
+    )
+    (tmp_path / "sub" / "b.m").write_text("function FromB(x) return x; end function;\n")
+    names, unresolved = load_defined_symbols('load "sub/a.m";\n', str(tmp_path))
+    assert unresolved == 0
+    assert {"FromA", "FromB"} <= names
+
+
+def test_load_defined_symbols_transitive_missing_counts_unresolved(tmp_path):
+    (tmp_path / "a.m").write_text('load "nowhere.m";\nfunction FromA(x) return x; end function;\n')
+    names, unresolved = load_defined_symbols('load "a.m";\n', str(tmp_path))
+    assert "FromA" in names
+    assert unresolved == 1  # the nested miss disables name checking, not silently ignored
+
+
+def test_load_defined_symbols_cycle_terminates(tmp_path):
+    (tmp_path / "a.m").write_text('load "b.m";\nfunction FromA(x) return x; end function;\n')
+    (tmp_path / "b.m").write_text('load "a.m";\nfunction FromB(x) return x; end function;\n')
+    names, unresolved = load_defined_symbols('load "a.m";\n', str(tmp_path))
+    assert unresolved == 0
+    assert {"FromA", "FromB"} <= names
+
+
 def test_call_args_exclude_optional_parameters():
     _, calls = analyze("Foo(a, b : Opt := 1);\n")
     (cs,) = calls

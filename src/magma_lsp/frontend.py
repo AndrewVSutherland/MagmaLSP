@@ -255,16 +255,20 @@ def check(
             f"  [{lint.severity}] (line {lint.line + 1}, col {lint.col + 1}): {lint.message}",
         )
 
+    # Base directory for `load` resolution AND for the execution pass's working directory —
+    # Magma resolves relative load paths against the process cwd (verified on 2.29-9), so the
+    # static and dynamic passes must agree on the same base.
+    base = os.path.dirname(os.path.abspath(filename)) if filename else os.getcwd()
+
     # names defined by load-ed files count as known; unresolved loads disable name checking
     loaded_names: set[str] = set()
     loads_unresolved = 0
     if "load" in source:
-        base = os.path.dirname(os.path.abspath(filename)) if filename else os.getcwd()
         loaded_names, loads_unresolved = load_defined_symbols(source, base)
         if loads_unresolved:
             notes.append(
-                "note: unresolved `load` target(s) — undefined-name checking skipped "
-                "(the loaded file could define anything)"
+                "note: unresolved `load` target(s) — undefined-name and arity checking "
+                "skipped (the loaded file could define anything)"
             )
 
     static_by_name: dict[str, tuple[int, int, str]] = {}  # unknown-name -> problem triple
@@ -277,8 +281,12 @@ def check(
                     static_by_name.setdefault(m.group(1), render_lint(lint))
                 else:
                     problems.append(render_lint(lint))
-        for lint in arity_problems(source, idx.arities):
-            problems.append(render_lint(lint))
+        if not loads_unresolved:
+            for lint in arity_problems(source, idx.arities):
+                m = re.search(r"'([^']+)'", lint.message)
+                if m and m.group(1) in loaded_names:
+                    continue  # a loaded file redefines the name; its arity differs
+                problems.append(render_lint(lint))
         note = staleness_note(idx)
         if note:
             notes.append(note)
@@ -334,7 +342,7 @@ def check(
     problems.extend(static_by_name.values())
 
     if not problems and not inconclusive and execute and magma_ran:
-        ex = execution_check(source, magma_path=magma_path, timeout=timeout)
+        ex = execution_check(source, magma_path=magma_path, timeout=timeout, cwd=base)
         for d in ex.diagnostics:
             for line in fmt_diags([d], source):
                 problems.append((max(0, d.line - 1), max(0, d.col - 1), line))
@@ -399,16 +407,21 @@ def run(
     memory_bytes: int = RUN_MEMORY_BYTES,
     max_output: int = RUN_MAX_OUTPUT_CHARS,
     magma_path: str | None = None,
+    filename: str | None = None,
 ) -> RunOutcome:
     """Execute ``source`` in a fresh sandboxed Magma (timeout + in-process memory limit).
 
     Error locations are remapped to the user program's own line numbers, and output beyond
     ``max_output`` chars is head+tail truncated (tail preserved: errors/results live there).
     ``SetQuitOnError`` makes the exit code meaningful (nonzero on the first runtime error).
+    When ``filename`` is given, the process runs in that file's directory so relative
+    ``load`` paths resolve as they would running the file in place (Magma resolves them
+    against the process cwd).
     """
     preamble = _RUN_PREAMBLE + f"SetMemoryLimit({memory_bytes});\nSetQuitOnError(true);\n"
     offset = preamble.count("\n")
-    res = run_source(source, timeout=timeout, preamble=preamble, magma_path=magma_path)
+    cwd = os.path.dirname(os.path.abspath(filename)) if filename else None
+    res = run_source(source, timeout=timeout, preamble=preamble, magma_path=magma_path, cwd=cwd)
     out = _remap_run_output(res.stdout, offset)
     out, truncated = _truncate_output(out, max_output)
     return RunOutcome(out, res.returncode, res.timed_out, truncated)

@@ -152,16 +152,36 @@ def load_targets(source: bytes | str) -> list[str]:
     return out
 
 
+_MAX_LOAD_FILES = 100  # runaway/pathological load-chain backstop
+
+
 def load_defined_symbols(source: bytes | str, base_dir: str | None) -> tuple[set[str], int]:
-    """Names defined by the files the document ``load``s (resolved against ``base_dir``).
+    """Names defined by the files the document ``load``s, followed transitively.
+
+    Magma's ``load`` is textual inclusion, so a loaded file's own ``load`` directives run too
+    and their definitions become available to the top-level document. Every relative target —
+    including nested ones — is resolved against the *same* ``base_dir``: Magma resolves load
+    paths against the process cwd, not the loading file's directory (verified on 2.29-9).
+    Cycles are tolerated (each file is read once).
 
     Returns ``(names, n_unresolved)``; an unresolved load means undefined-name checking for
-    the document is unreliable (the loaded file could define anything).
+    the document is unreliable (the loaded file could define anything). Chains longer than
+    ``_MAX_LOAD_FILES`` are cut off and counted as unresolved rather than silently ignored.
     """
     names: set[str] = set()
     unresolved = 0
-    for target in load_targets(source):
+    queue = list(load_targets(source))
+    seen: set[str] = set()
+    while queue:
+        target = queue.pop()
         path = target if os.path.isabs(target) else os.path.join(base_dir or ".", target)
+        real = os.path.realpath(path)
+        if real in seen:
+            continue
+        if len(seen) >= _MAX_LOAD_FILES:
+            unresolved += 1
+            break
+        seen.add(real)
         try:
             with open(path, "rb") as fh:
                 data = fh.read()
@@ -170,6 +190,7 @@ def load_defined_symbols(source: bytes | str, base_dir: str | None) -> tuple[set
             continue
         try:
             names |= defined_symbols(data)
+            queue.extend(load_targets(data))
         except Exception:
             unresolved += 1
     return names, unresolved

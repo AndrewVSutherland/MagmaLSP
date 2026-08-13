@@ -62,6 +62,7 @@ def cmd_run(args: argparse.Namespace) -> int:
         Path(args.file).read_text(encoding="utf-8"),
         timeout=args.timeout,
         max_output=args.max_output,
+        filename=args.file,
     )
     sys.stdout.write(res.output)
     if not res.output.endswith("\n"):

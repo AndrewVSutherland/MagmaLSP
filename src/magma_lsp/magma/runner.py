@@ -59,8 +59,14 @@ def run_source(
     timeout: float = 10.0,
     magma_path: str | None = None,
     preamble: str = SERVER_PREAMBLE,
+    cwd: str | None = None,
 ) -> MagmaResult:
-    """Run ``preamble + source`` in a fresh Magma process and return combined output."""
+    """Run ``preamble + source`` in a fresh Magma process and return combined output.
+
+    ``cwd`` sets the subprocess working directory: Magma resolves relative ``load`` paths
+    against the *process cwd* (verified on 2.29-9), not the script's location, so callers
+    checking a file that load-s siblings should pass that file's directory.
+    """
     magma = find_magma(magma_path)
     if magma is None:
         raise FileNotFoundError("Magma executable not found (set magmaPath or put `magma` on PATH)")
@@ -82,6 +88,7 @@ def run_source(
                 stderr=subprocess.STDOUT,
                 timeout=timeout + 5.0,
                 start_new_session=True,
+                cwd=cwd,
             )
         except FileNotFoundError:
             # No `timeout` binary; fall back to subprocess-level timeout only.
@@ -92,6 +99,7 @@ def run_source(
                 stderr=subprocess.STDOUT,
                 timeout=timeout,
                 start_new_session=True,
+                cwd=cwd,
             )
         out = proc.stdout.decode("utf-8", "replace") if proc.stdout else ""
         # `timeout` exits 124 when it had to kill the child.

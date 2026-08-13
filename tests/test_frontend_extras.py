@@ -107,6 +107,41 @@ def test_staleness_note():
     assert frontend.staleness_note(idx_ok) is None
 
 
+@magma
+def test_check_execute_resolves_relative_loads(tmp_path):
+    """The execution pass runs in the source file's directory, so a relative `load` that the
+    static pass resolved does not then fail at execution time (codex #12 round 2 P1)."""
+    (tmp_path / "helpers.m").write_text("function Helper(x) return x + 1; end function;\n")
+    src = 'load "helpers.m";\nprint Helper(3);\n'
+    out = frontend.check(src, execute=True, filename=str(tmp_path / "main.m"))
+    assert out.ok, out.report
+
+
+@magma
+def test_run_resolves_relative_loads(tmp_path):
+    (tmp_path / "helpers.m").write_text("function Helper(x) return x + 1; end function;\n")
+    res = frontend.run('load "helpers.m";\nprint Helper(41);\n', filename=str(tmp_path / "m.m"))
+    assert res.returncode == 0 and "42" in res.output, res.output
+
+
+def test_check_arity_skips_loaded_redefinitions(tmp_path):
+    """A loaded helper that shadows a DB intrinsic must not be arity-checked against the DB's
+    overloads (codex #12 round 2)."""
+    from magma_lsp.db.index import SignatureIndex
+    from magma_lsp.db.model import Intrinsic, MagmaDB, Param, Signature
+
+    one_arg = Signature(name="Weight", args=[Param("x", "RngIntElt")], returns=["RngIntElt"])
+    db = MagmaDB(version="0", intrinsics={"Weight": Intrinsic("Weight", [one_arg])})
+    idx = SignatureIndex(db)
+    (tmp_path / "helpers.m").write_text("function Weight(a, b) return a + b; end function;\n")
+    src = 'load "helpers.m";\nx := Weight(1, 2);\n'
+    out = frontend.check(src, index=idx, filename=str(tmp_path / "main.m"))
+    assert "no overload" not in out.report, out.report
+    # control: without the load, the 2-arg call against the 1-arg intrinsic IS flagged
+    out2 = frontend.check("x := Weight(1, 2);\n", index=idx)
+    assert "no overload" in out2.report, out2.report
+
+
 def test_truncate_output_helper():
     out, truncated = frontend._truncate_output("x" * 10, cap=100)
     assert not truncated and out == "x" * 10
