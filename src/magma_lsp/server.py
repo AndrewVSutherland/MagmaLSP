@@ -138,6 +138,12 @@ class MagmaLanguageServer(LanguageServer):
                 "workspace scan: %d names from %d files", len(scan.names), scan.files_scanned
             )
 
+    def invalidate_scanned_file(self, path: str) -> None:
+        """Drop a file's scan-cache entry. Used on didSave: the server KNOWS the file changed,
+        even when ``(mtime_ns, size)`` didn't — a same-size edit within one timestamp tick on
+        a coarse-mtime filesystem (HFS+, some network mounts) is invisible to stat."""
+        self._scan_cache.pop(os.path.normpath(path), None)
+
     def known_call_names(self) -> frozenset[str]:
         return self.intrinsic_names | self.workspace_symbols
 
@@ -228,7 +234,10 @@ def did_change(ls: MagmaLanguageServer, params: t.DidChangeTextDocumentParams):
 @server.thread()
 def did_save(ls: MagmaLanguageServer, params: t.DidSaveTextDocumentParams):
     if params.text_document.uri.endswith((".m", ".magma")):
-        ls.rescan_workspace()  # cached: only the saved file is re-parsed
+        path = to_fs_path(params.text_document.uri)
+        if path:
+            ls.invalidate_scanned_file(path)  # don't trust stat to notice the save
+        ls.rescan_workspace()  # cached: only invalidated/changed files are re-parsed
     _publish(ls, params.text_document.uri, run_magma=True)
 
 

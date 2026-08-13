@@ -77,6 +77,28 @@ def test_workspace_scan_suppresses_cross_file_calls(tmp_path):
     assert not any("Helper" in d.message for d in after)
 
 
+def test_invalidate_scanned_file_beats_stat_blind_edit(tmp_path):
+    """A same-size edit with an unchanged timestamp is invisible to the (mtime_ns, size)
+    cache key; didSave eviction must force the re-read anyway (codex #12 round 7)."""
+    import os
+
+    a = tmp_path / "a.m"
+    a.write_text("Old := 1;\n")
+    ls = srv.MagmaLanguageServer()
+    ls.workspace_roots = [str(tmp_path)]
+    ls.rescan_workspace()
+    assert "Old" in ls.workspace_symbols
+    st = os.stat(a)
+    a.write_text("New := 1;\n")  # same size...
+    os.utime(a, ns=(st.st_atime_ns, st.st_mtime_ns))  # ...same timestamp: stat can't tell
+    ls.rescan_workspace()
+    assert "Old" in ls.workspace_symbols  # the residual staleness the eviction exists for
+    ls.invalidate_scanned_file(str(a))
+    ls.rescan_workspace()
+    assert "New" in ls.workspace_symbols
+    assert "Old" not in ls.workspace_symbols
+
+
 def test_select_signature_picks_fitting_overload_and_clamps():
     """The active signature must fit the commas typed, and the active parameter must stay
     inside it (codex #12 round 5)."""
