@@ -77,6 +77,51 @@ def test_workspace_scan_suppresses_cross_file_calls(tmp_path):
     assert not any("Helper" in d.message for d in after)
 
 
+def test_magma_undefined_workspace_name_downgraded_not_suppressed(monkeypatch, tmp_path):
+    """Magma's authoritative undefined-identifier error must survive (as a warning) when the
+    name is defined only in an unrelated workspace sibling — and stay an error when the name
+    is defined nowhere (codex #12 round 1)."""
+    from magma_lsp.magma.diagnostics import MagmaDiagnostic
+    from magma_lsp.magma.validate import CheckResult
+
+    def fake_check(ident):
+        return CheckResult(
+            diagnostics=[
+                MagmaDiagnostic(
+                    line=1,
+                    col=6,
+                    severity="error",
+                    message=f"Identifier '{ident}' has not been declared or assigned",
+                )
+            ],
+            timed_out=False,
+        )
+
+    (tmp_path / "lib.m").write_text("function Helper(x) return x; end function;\n")
+    ls = srv.MagmaLanguageServer()
+    ls.magma_available = True
+    ls.enable_unknown_intrinsics = True
+    ls.intrinsic_names = frozenset({"EllipticCurve"})
+    ls.workspace_roots = [str(tmp_path)]
+    ls.rescan_workspace()
+    assert "Helper" in ls.workspace_symbols
+
+    # sibling-defined but not proven reachable -> downgraded to Warning, message explains why
+    monkeypatch.setattr(srv, "syntax_check", lambda *a, **k: fake_check("Helper"))
+    diags = srv._compute_diagnostics(ls, "z := Helper(3);\n", run_magma=True)
+    hits = [d for d in diags if "Helper" in d.message and "declared" in d.message]
+    assert hits, diags
+    assert all(d.severity == t.DiagnosticSeverity.Warning for d in hits)
+    assert any("load-ed or attached" in d.message for d in hits)
+
+    # defined nowhere -> an Error survives (the static pass flags it first, with suggestions,
+    # and the Magma duplicate is deduped; the point is it is NOT silently suppressed)
+    monkeypatch.setattr(srv, "syntax_check", lambda *a, **k: fake_check("Nowhere"))
+    diags = srv._compute_diagnostics(ls, "z := Nowhere(3);\n", run_magma=True)
+    hits = [d for d in diags if "Nowhere" in d.message]
+    assert hits and any(d.severity == t.DiagnosticSeverity.Error for d in hits)
+
+
 def test_tree_sitter_syntax_error_path():
     ls = srv.MagmaLanguageServer()
     ls.magma_available = False

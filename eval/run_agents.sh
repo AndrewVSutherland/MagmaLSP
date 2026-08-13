@@ -20,8 +20,18 @@ mkdir -p "$JOBDIR/logs"
 python3 - "$JOBDIR" <<'EOF' > "$JOBDIR/pending.txt"
 import json, os, sys
 jd = sys.argv[1]
+
+def done(path):
+    # complete = parseable JSON with nonempty code; an empty/truncated/invalid
+    # out-file (agent died mid-write) must be retried, not skipped forever
+    try:
+        with open(path) as f:
+            return bool(json.load(f).get("code"))
+    except (OSError, json.JSONDecodeError, AttributeError):
+        return False
+
 for j in json.load(open(os.path.join(jd, "manifest.json"))):
-    if not os.path.exists(j["out"]):
+    if not done(j["out"]):
         print(j["job"])
 EOF
 TOTAL=$(python3 -c "import json;print(len(json.load(open('$JOBDIR/manifest.json'))))")

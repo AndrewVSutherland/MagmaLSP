@@ -344,12 +344,25 @@ def _compute_diagnostics(
                 ident_m = _IDENT_IN_MSG_RE.search(d.message)
                 if ident_m:
                     ident = ident_m.group(1)
-                    if ident in ls.known_call_names():
-                        # defined in a sibling file (loaded via the project spec/load):
-                        # not an error in context
+                    if ident in loaded_names or ident in ls.intrinsic_names:
+                        # proven reachable from this document: not an error in context
                         continue
                     if ident in static_undef_idents:
                         continue  # the static diagnostic already covers it, with suggestions
+                    if ident in ls.workspace_symbols:
+                        # A workspace sibling defines the name, but nothing proves this
+                        # document loads/attaches that file — Magma's error is real for a
+                        # standalone run of this file, yet in spec/attach-style projects
+                        # the sibling is available at runtime. Keep the signal, soften
+                        # the severity.
+                        w = _magma_diagnostic(d)
+                        w.severity = t.DiagnosticSeverity.Warning
+                        w.message += (
+                            f" (a workspace file defines '{ident}' — make sure that file"
+                            " is load-ed or attached when this file runs)"
+                        )
+                        diags.append(w)
+                        continue
                 diags.append(_magma_diagnostic(d))
         except FileNotFoundError:
             ls.magma_available = False
