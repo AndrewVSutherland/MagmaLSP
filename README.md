@@ -1,5 +1,7 @@
 # MagmaLSP
 
+[![CI](https://github.com/AndrewVSutherland2/MagmaLSP/actions/workflows/ci.yml/badge.svg)](https://github.com/AndrewVSutherland2/MagmaLSP/actions/workflows/ci.yml)
+
 A language server and Claude Code plugin for the [Magma](http://magma.maths.usyd.edu.au/) computer
 algebra system. It gives an LLM (and human) accurate, version-current knowledge of Magma's
 intrinsics and a real error signal from Magma itself, so generated Magma is *reliable* and
@@ -42,11 +44,20 @@ Built on [`pygls`](https://github.com/openlawlibrary/pygls). The Magma grammar a
 formatter come from the MIT-licensed [`tree-sitter-magma`](https://github.com/edgarcosta/tree-sitter-magma)
 and [`lava`](https://github.com/havarddj/lava) — we reuse rather than reinvent them.
 
-## Install & build
+## Requirements
 
-Requires [`uv`](https://docs.astral.sh/uv/) and a C compiler plus Python headers to build the
-tree-sitter grammar (if the system Python lacks `Python.h`, `uv python install 3.12` first —
-uv-managed Pythons bundle headers).
+- A **licensed [Magma](http://magma.maths.usyd.edu.au/) installation** (developed and tested
+  against V2.29-9). The signature DB is built from *your* install — nothing Magma-owned ships
+  with this repo. Without a runnable Magma everything degrades honestly rather than silently:
+  the server falls back to static-only diagnostics (tree-sitter syntax errors + the static
+  checks), `magma_check`/`magma_run` say so explicitly, and the DB build produces a package-only
+  DB (no kernel intrinsics) from the install's package tree.
+- **Linux** (macOS is untested).
+- [`uv`](https://docs.astral.sh/uv/).
+- A **C compiler** and Python headers, to build the tree-sitter grammar (if the system Python
+  lacks `Python.h`, `uv python install 3.12` first — uv-managed Pythons bundle headers).
+
+## Install & build
 
 ```bash
 uv sync --extra dev                # create the venv, build tree-sitter-magma
