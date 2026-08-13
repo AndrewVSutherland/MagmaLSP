@@ -13,6 +13,7 @@ NAMES = [
     "Order",
     "PrimesUpTo",
     "Factor",
+    "'#'",  # quoted operator names are part of the real DB population
 ]
 
 
@@ -56,6 +57,14 @@ def test_cross_system_alias_primeq():
 def test_length_alias_maps_to_hash_operator():
     # Operators never enter the fuzzy candidate pool, but the alias table still reaches '#'.
     assert "'#'" in Suggester(NAMES).suggest("length")
+
+
+def test_alias_absent_from_index_not_suggested():
+    """A curated alias whose target is not in THIS index must not be suggested — the
+    follow-up lookup would reject it (codex #12 round 16)."""
+    s = Suggester(["Foo", "Bar"])
+    assert "Factorization" not in s.suggest("factorinteger")
+    assert "IsPrime" not in s.suggest("primeq")
 
 
 def test_abbreviation_matches_by_tokens():

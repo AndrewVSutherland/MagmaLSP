@@ -95,7 +95,9 @@ class Suggester:
     def __init__(self, names: Iterable[str]) -> None:
         # (name, lowercase, tokens, token_set); operators excluded — never a plausible guess.
         self._cands: list[tuple[str, str, list[str], set[str]]] = []
+        self._names: set[str] = set()  # full population incl. operators, for alias filtering
         for n in names:
+            self._names.add(n)
             if not n or not n[0].isalpha():
                 continue
             toks = camel_tokens(n)
@@ -121,7 +123,10 @@ class Suggester:
         scored.sort(key=lambda t: (-t[0], len(t[1]), t[1]))
         ranked = [name for _, name in scored[:limit]]
         alias = CROSS_SYSTEM_ALIASES.get(ql)
-        if alias and alias not in ranked:
+        # only suggest an alias target that actually exists in THIS index (a package-only or
+        # custom DB may lack it, and a suggestion the subsequent lookup rejects is worse
+        # than none)
+        if alias and alias not in ranked and alias in self._names:
             ranked = [alias, *ranked][:limit]
         return ranked
 

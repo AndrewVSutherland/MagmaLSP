@@ -95,11 +95,24 @@ def analyze(source: bytes | str) -> tuple[set[str], list[CallSite]]:
         scopes[-1].add(name)
         available.add(name)
 
+    class _DeferredBind:
+        """Sentinel popped AFTER an assignment's subtree: `W := W(1,2);` evaluates its RHS
+        before the name is bound, so the RHS call must not see the new binding."""
+
+        __slots__ = ("names",)
+
+        def __init__(self, names: list[str]) -> None:
+            self.names = names
+
     # pre-order walk (children pushed reversed) with a chain of shared scope sets: bindings
     # made in an earlier sibling's subtree at the same level are visible to later siblings
     stack: list[tuple[object, tuple[set[str], ...]]] = [(tree.root_node, (set(),))]
     while stack:
         node, scopes = stack.pop()
+        if isinstance(node, _DeferredBind):
+            for nm in node.names:
+                bind(nm, scopes)
+            continue
         t = node.type
 
         if t == "call" and node.children and node.children[0].type == "identifier":
@@ -115,11 +128,16 @@ def analyze(source: bytes | str) -> tuple[set[str], list[CallSite]]:
             if name:
                 bind(name, scopes)
         elif t == "assignment":
+            # bind targets AFTER the RHS subtree (deferred sentinel below): Magma evaluates
+            # the RHS first, so its calls still resolve to the old meaning of the name
+            targets = []
             for c in node.children:
                 if c.type == ":=":
                     break
                 if c.type == "identifier":
-                    bind(c.text.decode("utf-8", "replace"), scopes)
+                    targets.append(c.text.decode("utf-8", "replace"))
+            if targets:
+                stack.append((_DeferredBind(targets), scopes))
         elif t == "for_quantifier":
             for c in node.children:
                 if c.type == "identifier":
@@ -145,7 +163,21 @@ def analyze(source: bytes | str) -> tuple[set[str], list[CallSite]]:
                     bind(c.text.decode("utf-8", "replace"), scopes)
 
         if t in _SCOPE_TYPES:
-            child_scopes: tuple[set[str], ...] = (*scopes, set())
+            new_scope: set[str] = set()
+            if t == "constructor":
+                # func< x, y | body >: the formals are bare identifiers between `<` and the
+                # body — seed them so body calls through a formal aren't taken for intrinsics
+                seen_lt = False
+                for c in node.children:
+                    if c.type == "<":
+                        seen_lt = True
+                    elif c.type == "constructor_elements":
+                        break
+                    elif seen_lt and c.type == "identifier":
+                        nm = c.text.decode("utf-8", "replace")
+                        new_scope.add(nm)
+                        available.add(nm)
+            child_scopes: tuple[set[str], ...] = (*scopes, new_scope)
         else:
             # Comprehension/quantifier binders (`[expr : x in S]`) and where-bindings
             # (`expr where x is v`) appear AFTER the expression they govern in the parse
