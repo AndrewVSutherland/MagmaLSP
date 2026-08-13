@@ -148,9 +148,14 @@ class SignatureIndex:
         self._ensure_doc_index()
         assert self._doc_index is not None and self._doc_freq is not None
         n_docs = max(1, len(self._doc_index))
-        qterms = [
-            t for t in _WORD_RE.findall(query.lower()) if t not in _STOPWORDS and len(t) > 1
-        ]
+        # Tokenize the query with the SAME CamelCase splitting the index applies to names:
+        # a query of "NumberOfPoints" must match the tokens [number, of, points], not the
+        # single unsplit term "numberofpoints" (which matches nothing).
+        qset: set[str] = set()
+        for word in re.findall(r"[A-Za-z0-9]+", query):
+            qset.add(word.lower())
+            qset.update(camel_tokens(word))
+        qterms = [t for t in qset if t not in _STOPWORDS and len(t) > 1]
         if not qterms:
             return []
         idf = {t: math.log(n_docs / (1 + self._doc_freq.get(t, 0))) for t in qterms}

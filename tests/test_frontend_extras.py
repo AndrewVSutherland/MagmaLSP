@@ -98,6 +98,15 @@ def test_search_finds_by_keyword():
 
 
 @needs_db
+def test_search_matches_camelcase_query():
+    """Searching an exact CamelCase intrinsic name must hit — the query is split with the
+    same camel tokenizer as the indexed names (codex #12 round 9)."""
+    res = frontend.search("NumberOfPoints")
+    assert res.n_hits > 0
+    assert "NumberOfPoints" in res.text
+
+
+@needs_db
 def test_search_limit_clamped_at_lower_bound():
     """limit<=0 must not slice as scored[:-n] and dump the index (codex #12 round 5)."""
     for bad in (0, -1):

@@ -49,10 +49,19 @@ def pitfall_lints(
     """
     data = source.encode("utf-8") if isinstance(source, str) else source
     tree = new_parser().parse(data)
-    available, calls = analyze(data)
+    available, _calls = analyze(data)  # calls are re-collected below as nodes, with scopes
 
     out: list[Lint] = []
-    shadow_calls = {c.name for c in calls}
+    # call NODES by name (not just names): the shadowing lint must compare scopes — a local
+    # variable in one function does not shadow an intrinsic another function calls
+    call_nodes: dict[str, list] = {}
+    _cstack = [tree.root_node]
+    while _cstack:
+        n = _cstack.pop()
+        if n.type == "call" and n.children and n.children[0].type == "identifier":
+            call_nodes.setdefault(node_text(n.children[0]), []).append(n)
+        _cstack.extend(n.children)
+    shadow_calls = set(call_nodes)
 
     stack = [tree.root_node]
     while stack:
@@ -131,7 +140,11 @@ def pitfall_lints(
                         break
                     if c.type == "identifier":
                         nm = node_text(c)
-                        if nm in intrinsic_names and nm in shadow_calls:
+                        if (
+                            nm in intrinsic_names
+                            and nm in shadow_calls
+                            and _shadowed_call_in_scope(node, call_nodes[nm])
+                        ):
                             out.append(
                                 _lint(
                                     c,
@@ -179,6 +192,28 @@ def pitfall_lints(
             seen.add(key)
             uniq.append(lint)
     return uniq
+
+
+_CALLABLE_TYPES = frozenset(
+    {"function_definition", "procedure_definition", "intrinsic_definition", "constructor"}
+)
+
+
+def _shadowed_call_in_scope(assignment_node, calls: list) -> bool:
+    """True iff some call could actually see the assignment: a top-level assignment reaches
+    the whole file, a callable-local one only calls inside that same callable."""
+    scope = assignment_node.parent
+    while scope is not None and scope.type not in _CALLABLE_TYPES:
+        scope = scope.parent
+    if scope is None:
+        return bool(calls)
+    for cn in calls:
+        p = cn
+        while p is not None:
+            if p.id == scope.id:
+                return True
+            p = p.parent
+    return False
 
 
 def _first_positional_arg_text(call_node) -> str | None:

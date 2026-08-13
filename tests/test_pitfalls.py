@@ -70,6 +70,29 @@ def test_shadowing_without_a_call_is_allowed():
     assert pitfall_lints("Order := 5;\n", intrinsic_names=frozenset({"Order"})) == []
 
 
+def test_shadowing_in_disjoint_scopes_is_allowed():
+    """A local variable in one function does not shadow the intrinsic another function calls
+    (codex #12 round 9)."""
+    src = (
+        "f := function(G)\n    Degree := 5;\n    return Degree;\nend function;\n"
+        "g := function(p)\n    return Degree(p);\nend function;\n"
+    )
+    assert pitfall_lints(src, intrinsic_names=frozenset({"Degree"})) == []
+
+
+def test_shadowing_in_same_function_is_flagged():
+    src = "f := function(p)\n    Degree := 5;\n    return Degree(p);\nend function;\n"
+    (lint,) = pitfall_lints(src, intrinsic_names=frozenset({"Degree"}))
+    assert "shadows" in lint.message
+
+
+def test_toplevel_shadowing_with_call_in_function_is_flagged():
+    # a top-level binding leaks into function bodies, so this stays a warning
+    src = "Degree := 5;\nf := function(p)\n    return Degree(p);\nend function;\n"
+    (lint,) = pitfall_lints(src, intrinsic_names=frozenset({"Degree"}))
+    assert "shadows" in lint.message
+
+
 def test_double_slash_comment_suggests_div():
     (lint,) = pitfall_lints("q := a // b;\nprint q;\n")
     assert "div" in lint.message
