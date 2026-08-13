@@ -556,7 +556,15 @@ def signature_help(
     if not sigs:
         return None
     shown = sigs[:25]
-    active_sig, active_param = _select_signature(shown, _active_parameter(call, params.position))
+    has_args = any(
+        a.type not in ("(", ")", ",", ":", "comment")
+        for c in call.children
+        if c.type == "argument_list"
+        for a in c.children
+    )
+    active_sig, active_param = _select_signature(
+        shown, _active_parameter(call, params.position), has_args=has_args
+    )
     infos = [
         t.SignatureInformation(
             label=_sig_label(s),
@@ -575,14 +583,22 @@ def signature_help(
     )
 
 
-def _select_signature(sigs, n_commas: int) -> tuple[int, int]:
+def _select_signature(sigs, n_commas: int, *, has_args: bool = True) -> tuple[int, int | None]:
     """Pick the overload the cursor position fits (first with more args than commas typed;
     else the widest) and clamp the active parameter inside it — an index past the active
-    signature's parameter list makes clients omit or mis-highlight the help."""
+    signature's parameter list makes clients omit or mis-highlight the help. An EMPTY
+    argument list prefers a zero-argument overload, and a selected signature without
+    parameters gets no active parameter at all."""
+    if not has_args:
+        zi = next((i for i, s in enumerate(sigs) if not s.args), None)
+        if zi is not None:
+            return zi, None
     idx = next((i for i, s in enumerate(sigs) if len(s.args) > n_commas), None)
     if idx is None:
         idx = max(range(len(sigs)), key=lambda i: len(sigs[i].args))
-    return idx, min(n_commas, max(0, len(sigs[idx].args) - 1))
+    if not sigs[idx].args:
+        return idx, None
+    return idx, min(n_commas, len(sigs[idx].args) - 1)
 
 
 def _active_parameter(call_node, pos: t.Position) -> int:

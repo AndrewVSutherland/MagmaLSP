@@ -99,6 +99,24 @@ def test_constructor_formals_shield_body_calls():
     assert "'Foo'" in lint.message
 
 
+def test_membership_test_does_not_suppress():
+    """`if Foo in S then` is a TEST, not a binder — it must not shield a later intrinsic
+    call, while a real for-loop binder still does (codex #12 round 17)."""
+    src = "if Foo in S then\ny := 1;\nend if;\nx := Foo(1,2,3);\n"
+    (lint,) = arity_problems(src, fake_arities)
+    assert lint.line == 3
+    assert arity_problems("for Foo in [1..3] do\nx := Foo(1,2,3);\nend for;\n", fake_arities) == []
+
+
+def test_where_binding_does_not_leak_past_expression():
+    """`where` bindings are local to their expression (codex #12 round 17)."""
+    src = "z := y where Foo is 7;\nx := Foo(1,2,3);\n"
+    (lint,) = arity_problems(src, fake_arities)
+    assert lint.line == 1
+    # inside the where expression the binding does apply
+    assert arity_problems("z := Foo(1,2,3) where Foo is g;\n", fake_arities) == []
+
+
 def test_comprehension_iterator_call_not_flagged():
     """`[Weight(1,2) : Weight in handlers]` calls the iterator value, not the intrinsic —
     the binder appears after the expression in the parse tree (codex #12 round 15)."""

@@ -133,8 +133,14 @@ def test_select_signature_picks_fitting_overload_and_clamps():
     # more commas than ANY overload takes -> widest overload, param clamped to its last slot
     idx, param = srv._select_signature([sig(1), sig(3)], 7)
     assert (idx, param) == (1, 2)
-    # zero-arg-only overloads never yield a negative index
+    # a parameterless selected signature carries NO active parameter
     idx, param = srv._select_signature([sig(0)], 4)
+    assert (idx, param) == (0, None)
+    # an empty argument list prefers the zero-arg overload (codex #12 round 17)
+    idx, param = srv._select_signature([sig(1), sig(0)], 0, has_args=False)
+    assert (idx, param) == (1, None)
+    # ...but content in the list means the first argument is being edited
+    idx, param = srv._select_signature([sig(1), sig(0)], 0, has_args=True)
     assert (idx, param) == (0, 0)
 
 

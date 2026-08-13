@@ -144,23 +144,26 @@ def analyze(source: bytes | str) -> tuple[set[str], list[CallSite]]:
                     bind(c.text.decode("utf-8", "replace"), scopes)
                     break
         elif t == "in":
-            # Binder of a for-loop (`for phi in A`), comprehension (`[ e : c in C ]`), or
-            # quantifier (`forall x in S`): the identifier immediately before `in` is bound.
-            # (A membership test `x in S` harmlessly re-adds an already-defined name.)
+            # The identifier before `in` is a real binder only under a for-loop quantifier
+            # or a comprehension iter_var (already prebound) — a membership TEST (`x in S`
+            # anywhere else) binds nothing and must not scope-suppress later calls. It still
+            # feeds `available` (the flat undefined-pass view stays conservative).
             prev = node.prev_sibling
             if prev is not None and prev.type == "identifier":
-                bind(prev.text.decode("utf-8", "replace"), scopes)
+                nm = prev.text.decode("utf-8", "replace")
+                available.add(nm)
+                anc, depth = node.parent, 0
+                while anc is not None and depth < 3:
+                    if anc.type in ("for_quantifier", "iter_var"):
+                        scopes[-1].add(nm)
+                        break
+                    anc, depth = anc.parent, depth + 1
         elif t in _BIND_LISTS:
             for c in node.children:
                 if c.type == "identifier":
                     bind(c.text.decode("utf-8", "replace"), scopes)
-        elif t == "where_expression":
-            # `expr where x is ...` / `where x := ...`: identifiers before `is`/`:=` are bound
-            for c in node.children:
-                if c.type in ("is", ":="):
-                    break
-                if c.type == "identifier":
-                    bind(c.text.decode("utf-8", "replace"), scopes)
+        # (where_expression bindings are handled by the prebinding block below, scoped to
+        # the where node itself — they must not leak into the enclosing scope)
 
         if t in _SCOPE_TYPES:
             new_scope: set[str] = set()
