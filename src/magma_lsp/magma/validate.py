@@ -16,7 +16,8 @@ The **syntax/binding pass** (default, safe) picks a strategy from the file's sha
   even *executing* the remainder.
 
 The **execution pass** (opt-in, heavier) runs the code for real under a memory limit and
-``SetQuitOnError``. Aborts on the first error.
+``SetQuitOnError``, inside the bubblewrap OS sandbox when available (read-only filesystem;
+see ``magma.runner``). Aborts on the first error.
 
 Positioned diagnostics are filtered to *our* temp file (program output that merely looks like
 an error block is ignored), shifted back to the user document's 1-based coordinates, clamped
@@ -278,7 +279,12 @@ def execution_check(
     )
     offset = preamble.count("\n")
     res = run_source(
-        preamble + source + "\n", magma_path=magma_path, timeout=timeout, preamble="", cwd=cwd
+        preamble + source + "\n",
+        magma_path=magma_path,
+        timeout=timeout,
+        preamble="",
+        cwd=cwd,
+        sandbox=True,  # this pass EXECUTES user code — the parse-only strategies do not
     )
     diags: list[MagmaDiagnostic] = []
     for d in parse_diagnostics(res.stdout):

@@ -99,10 +99,26 @@ The plugin bundles **two** ways into the same core intelligence (`src/magma_lsp/
   [`eval/FINDINGS_trap.md`](eval/FINDINGS_trap.md), [`eval/FINDINGS_haiku.md`](eval/FINDINGS_haiku.md)).
   The CLI ([`magma-lsp-cli`](src/magma_lsp/cli.py)) exposes the same operations from a shell.
 
-**Execution sandbox (current):** every `run`/`check` is a fresh, hermetic Magma process under a
-wall-clock `timeout` and an in-process `SetMemoryLimit`. This suits a trial with **trusted users**;
-it does *not* yet block Magma `System(...)`/`Pipe(...)` shell-out, file writes, or network — add OS
-isolation (restricted user / cgroup / namespace) before exposing it to untrusted input.
+**Execution sandbox:** every `run`/`check` is a fresh, hermetic Magma process under a wall-clock
+`timeout` and an in-process `SetMemoryLimit`. In addition, the passes that actually *execute* user
+code (`magma_run`, `magma_check(execute=True)`, and the CLI equivalents) run inside a
+[bubblewrap](https://github.com/containers/bubblewrap) sandbox whenever `bwrap` is on PATH:
+the entire filesystem is remounted **read-only** (`/tmp` becomes a throwaway tmpfs; the program's
+own directory stays readable so relative `load`s work), with fresh PID/IPC namespaces and no
+controlling terminal. Precisely stated: the sandbox blocks **filesystem mutation** — the worst
+vector — but does **not** block `System(...)`/`Pipe(...)` shell-out per se and does **not** block
+network egress. The network namespace must stay shared because Magma's license check reads the
+host MAC address (an unshared network namespace makes licensing fail); a shell can therefore
+still be spawned, but it runs against the same read-only filesystem. The parse-only diagnostics
+passes execute nothing user-level and are not sandboxed, which keeps the every-edit syntax check
+at its measured ~12.5 ms.
+
+Policy: **on automatically** when `bwrap` is present; set `MAGMA_LSP_NO_SANDBOX=1` in the server's
+environment to opt out; without bwrap (e.g. macOS, untested anyway) execution passes run
+unsandboxed and a loud one-time warning on stderr says so. Programs that legitimately write output
+files can be granted specific directories with `MAGMA_LSP_SANDBOX_WRITABLE=/path/a:/path/b`
+(bind-mounted read-write; unset by default). `magma_guide()` reports the live sandbox state, and
+the `magma_run`/`magma_check` tool docs tell the agent up front that writes will fail.
 
 ## Develop
 

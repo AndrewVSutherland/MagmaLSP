@@ -69,6 +69,30 @@ GUIDE = """\
    formula on a small group whose answer you know) before trusting the output.
 """
 
+# Appended to the guide so the agent knows up front whether file writes will fail — a
+# confused agent burning iterations on failed writes is a real failure mode.
+_SANDBOX_NOTES = {
+    "active": (
+        "ACTIVE — code passed to magma_run / magma_check(execute) runs with the filesystem\n"
+        "READ-ONLY (bubblewrap): file writes fail, even in the program's own directory, and\n"
+        "/tmp is a throwaway tmpfs. PRINT results instead of writing files. Reading files and\n"
+        "relative `load`s work normally. Shell-out and network are NOT blocked (Magma\n"
+        "licensing constraint). The server admin can grant writable directories via\n"
+        "MAGMA_LSP_SANDBOX_WRITABLE or disable the sandbox via MAGMA_LSP_NO_SANDBOX=1."
+    ),
+    "disabled": (
+        "DISABLED (MAGMA_LSP_NO_SANDBOX is set) — executed code runs with the caller's full\n"
+        "filesystem access; file writes succeed."
+    ),
+    "unavailable": (
+        "UNAVAILABLE (no `bwrap` on PATH) — executed code runs with the caller's full\n"
+        "filesystem access; install bubblewrap to enable the read-only sandbox."
+    ),
+}
+
 
 def guide() -> str:
-    return GUIDE
+    from .magma.runner import sandbox_state
+
+    state = sandbox_state()
+    return GUIDE + f"\n## Execution sandbox (this session)\n{_SANDBOX_NOTES[state]}\n"

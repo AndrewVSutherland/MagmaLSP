@@ -84,6 +84,30 @@ allocator escapes vsize); for a hard OS bound use a cgroup (`systemd-run --scope
 
 **Reproducibility**: `magma -b -S <seed> …` seeds the PRNG deterministically (verified).
 
+### 3b. OS execution sandbox (bubblewrap) — verified 2026-08-13, bwrap 0.11.0
+
+Execution passes (`magma_run`, `magma_check(execute=True)`, eval scoring — NOT the parse-only
+syntax strategies) run under bwrap when present (`magma/runner.py:_sandbox_argv`, policy
+`sandbox_state()`; opt-out `MAGMA_LSP_NO_SANDBOX=1`, writable escape hatch
+`MAGMA_LSP_SANDBOX_WRITABLE=dir:dir`). Verified facts that constrain the recipe:
+
+- Working shape (tested end-to-end: licensed run OK, `System("touch …")` write FAILS):
+  `timeout N bwrap --ro-bind / / --tmpfs /tmp [--ro-bind cwd cwd] --ro-bind <src.m> <src.m>
+  --dev /dev --proc /proc --unshare-pid --unshare-ipc --new-session --die-with-parent
+  [--chdir cwd] magma -b -n <src.m>`. `timeout` stays OUTSIDE bwrap (wall clock kills the
+  whole tree; `--die-with-parent` + the PID namespace handle the inner side).
+- ⚠️ **`--unshare-net` BREAKS Magma licensing**: the license check reads the host MAC address
+  and fails with "This host has the following MAC address(es): <empty>". Never add it. Beware
+  `magma -V` SKIPS the license check — a `-V` probe under `--unshare-net` misleadingly
+  succeeds; test with a real program.
+- Therefore the sandbox blocks filesystem *mutation* but NOT shell-out or network egress —
+  the README/docstrings say exactly that; don't overclaim.
+- The temp `.m` is written to `tempfile.gettempdir()` (often under `/tmp`) and `--ro-bind`-ed
+  back over the `--tmpfs /tmp`, which recreates the path inside the tmpfs — keep that shape.
+- Mount ORDER matters (later shadows earlier): ro root → tmpfs /tmp → cwd ro (a /tmp-based
+  program keeps its own dir visible for relative `load`s) → user writable binds (may override
+  cwd) → source file ro LAST (stays ro even inside a writable dir).
+
 ---
 
 ## 4. Signature data sources (the heart of the DB)

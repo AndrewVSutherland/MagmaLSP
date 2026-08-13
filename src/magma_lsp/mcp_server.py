@@ -121,7 +121,9 @@ def magma_check(code: str, execute: bool = True, timeout: float = 30.0, filename
     ALWAYS run this on code before presenting it to the user. The static pass reports unknown
     intrinsics (with spelling suggestions), wrong arity, and Magma pitfalls (`=` vs `:=`, `==`,
     method-call syntax, ...); the Magma pass is authoritative for syntax. Set execute=False for
-    a parse/bind-only check that never runs the code (safe for code with side effects).
+    a parse/bind-only check that never runs the code (safe for code with side effects). The
+    execution pass runs under the same read-only-filesystem sandbox as magma_run (file writes
+    fail; see magma_guide for this session's sandbox state).
 
     Args:
         code: complete Magma source.
@@ -145,7 +147,11 @@ def magma_run(code: str, timeout: float = 30.0, max_output: int = 24000, filenam
     """Execute Magma source in a fresh sandboxed process and return its combined output.
 
     The process is hermetic (no startup file), wall-clock limited by `timeout`, and
-    memory-limited. Error locations are reported in YOUR program's line numbers. A clean run is
+    memory-limited. Where bubblewrap is available (default on Linux) it also runs with the
+    filesystem READ-ONLY: file writes fail even in the program's own directory, so PRINT the
+    values you need instead of writing files (reads and relative `load`s work; magma_guide
+    reports this session's sandbox state and how the server admin can grant writable dirs).
+    Error locations are reported in YOUR program's line numbers. A clean run is
     necessary but NOT sufficient for correctness: Magma will happily print a wrong answer from a
     misused intrinsic. Sanity-check the output (cross-check via an independent computation, or
     magma_lookup the intrinsic's documented return value) before trusting it.
