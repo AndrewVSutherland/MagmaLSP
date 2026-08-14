@@ -97,25 +97,38 @@ def _warn_once(key: str, message: str) -> None:
 _bwrap_ok: bool | None = None  # per-process cache of the functional probe
 
 
+def _probe_argv(bwrap: str) -> list[str]:
+    """The functional-probe command, chosen so the probed executable cannot be shadowed by
+    the probe's own masking mounts (a false negative here permanently drops the sandbox).
+
+    Preferred: a PATH-resolved ``true`` living outside the masked roots — no FHS assumption
+    (NixOS keeps it in the store, not /bin). Fallback: our own interpreter (guaranteed to
+    exist on any host running this code), ro-binding its masked directory(ies) back exactly
+    as the real Magma invocation does — an ephemeral /tmp virtualenv python would otherwise
+    be hidden by ``--tmpfs /tmp`` and misclassify a working bwrap as broken. ``true``
+    ignores the ``-c pass`` arguments, so one argv shape serves every fallback."""
+    mounts = ["--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp"]
+    flags = ["--unshare-pid", "--unshare-ipc", "--new-session", "--die-with-parent"]
+    true = shutil.which("true")
+    if true and not _masked_exe_dirs(true):
+        return [bwrap, *mounts, *flags, true]
+    exe = sys.executable or true or "/bin/true"
+    for d in _masked_exe_dirs(exe):
+        mounts += ["--ro-bind", d, d]
+    return [bwrap, *mounts, *flags, exe, "-c", "pass"]
+
+
 def _bwrap_functional(bwrap: str) -> bool:
     """Cached probe that the recipe actually works on this host: bwrap can be installed yet
     unable to create namespaces (unprivileged user namespaces disabled — common inside
     containers), in which case every sandboxed run would fail at launch instead of running
-    unsandboxed-with-a-warning. Probed once per process with the real flag set.
-
-    The probed command is our own interpreter — guaranteed to exist and be executable on any
-    host that is running this code, with no FHS assumption (`/bin/true` does not exist on
-    e.g. NixOS, and a missing probe command would misclassify a working bwrap as broken,
-    silently dropping the sandbox). `true` ignores the ``-c pass`` arguments, so the one
-    argv shape also serves the no-``sys.executable`` fallback."""
+    unsandboxed-with-a-warning. Probed once per process with the real flag set
+    (:func:`_probe_argv`)."""
     global _bwrap_ok
     if _bwrap_ok is None:
-        exe = sys.executable or shutil.which("true") or "/bin/true"
         try:
             proc = subprocess.run(
-                [bwrap, "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc",
-                 "--tmpfs", "/tmp", "--unshare-pid", "--unshare-ipc", "--new-session",
-                 "--die-with-parent", exe, "-c", "pass"],
+                _probe_argv(bwrap),
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
@@ -171,17 +184,17 @@ def _writable_dirs() -> list[str]:
 _MASKED_ROOTS = ("/tmp", "/dev")
 
 
-def _masked_magma_dirs(magma: str | None) -> list[str]:
-    """Directories of the Magma executable that the recipe's masking mounts would hide.
+def _masked_exe_dirs(exe: str | None) -> list[str]:
+    """Directories of an executable that the recipe's masking mounts would hide.
 
-    A Magma install — or a wrapper/symlink to one — under /tmp or /dev would vanish behind
-    ``--tmpfs /tmp`` / ``--dev /dev`` and every sandboxed run would fail at exec; ro-bind
-    those directories back. Both the invoked path and its realpath matter (a /tmp symlink
-    to a persistent install must stay resolvable inside the sandbox)."""
-    if not magma:
+    An executable — Magma, or the probe's fallback interpreter — under /tmp or /dev would
+    vanish behind ``--tmpfs /tmp`` / ``--dev /dev`` and exec would fail; ro-bind those
+    directories back. Both the invoked path and its realpath matter (a /tmp symlink to a
+    persistent install must stay resolvable inside the sandbox)."""
+    if not exe:
         return []
     out: list[str] = []
-    for p in (magma, os.path.realpath(magma)):
+    for p in (exe, os.path.realpath(exe)):
         d = os.path.dirname(os.path.abspath(p))
         if any(d == r or d.startswith(r + "/") for r in _MASKED_ROOTS) and d not in out:
             out.append(d)
@@ -198,7 +211,7 @@ def _sandbox_argv(source_path: str, cwd: str | None, magma: str | None = None) -
        mounting /dev afterwards would hide it, failing every sandboxed run;
     3. a throwaway tmpfs over /tmp (hides host /tmp; gives the program scratch space);
     4. the Magma executable's directory(ies), when they sit under a masked mount
-       (:func:`_masked_magma_dirs` — else bwrap could not exec Magma at all);
+       (:func:`_masked_exe_dirs` — else bwrap could not exec Magma at all);
     5. ``cwd`` read-only again — so a program under /tmp (or /dev/shm) keeps its own
        directory (relative ``load``\\ s) visible through the masking mounts;
     6. user-designated writable dirs (may deliberately override cwd's read-only view);
@@ -233,7 +246,7 @@ def _sandbox_argv(source_path: str, cwd: str | None, magma: str | None = None) -
         "--proc", "/proc",
         "--tmpfs", "/tmp",
     ]
-    for mdir in _masked_magma_dirs(magma):
+    for mdir in _masked_exe_dirs(magma):
         argv += ["--ro-bind", mdir, mdir]
     if cwd:
         cwd = os.path.abspath(cwd)

@@ -122,6 +122,56 @@ def test_sandbox_argv_without_cwd(monkeypatch):
     assert argv.count("--ro-bind") == 2  # root + source only
 
 
+def test_probe_argv_prefers_unmasked_true(monkeypatch):
+    _fresh_policy(monkeypatch)
+    monkeypatch.setattr(
+        runner.shutil, "which", lambda name: {"true": "/usr/bin/true"}.get(name, "/usr/bin/bwrap")
+    )
+    argv = runner._probe_argv("/usr/bin/bwrap")
+    assert argv[-1] == "/usr/bin/true"
+    assert argv.count("--ro-bind") == 1  # just the root; nothing to un-mask
+
+
+def test_probe_argv_binds_masked_interpreter(monkeypatch):
+    # no `true` anywhere, interpreter in an ephemeral /tmp venv: the probe must ro-bind the
+    # interpreter's dir back or a working bwrap gets misclassified as broken
+    _fresh_policy(monkeypatch)
+    monkeypatch.setattr(runner.shutil, "which", lambda name: None)
+    monkeypatch.setattr(runner.sys, "executable", "/tmp/venv/bin/python")
+    argv = runner._probe_argv("/usr/bin/bwrap")
+    assert argv[-3:] == ["/tmp/venv/bin/python", "-c", "pass"]
+    bind = _triple_index(argv, "--ro-bind", "/tmp/venv/bin", "/tmp/venv/bin")
+    assert argv.index("--tmpfs") < bind
+
+
+def test_probe_argv_masked_true_falls_back_to_interpreter(monkeypatch):
+    _fresh_policy(monkeypatch)
+    monkeypatch.setattr(
+        runner.shutil, "which", lambda name: "/tmp/odd/true" if name == "true" else None
+    )
+    monkeypatch.setattr(runner.sys, "executable", "/usr/bin/python3")
+    argv = runner._probe_argv("/usr/bin/bwrap")
+    assert argv[-3:] == ["/usr/bin/python3", "-c", "pass"]
+    assert argv.count("--ro-bind") == 1  # interpreter is not masked; no extra binds
+
+
+@needs_working_bwrap
+def test_real_probe_with_tmp_interpreter(tmp_path, monkeypatch):
+    # exercise the masked-interpreter probe path for real: a /tmp symlink to our interpreter
+    # with `true` hidden — the probe must bind the /tmp dir back and still report working
+    import sys as real_sys
+
+    orig_which = shutil.which
+    link = tmp_path / "python"
+    link.symlink_to(real_sys.executable)
+    monkeypatch.setattr(runner.sys, "executable", str(link))
+    monkeypatch.setattr(
+        runner.shutil, "which", lambda name: None if name == "true" else orig_which(name)
+    )
+    monkeypatch.setattr(runner, "_bwrap_ok", None)
+    assert runner._bwrap_functional(orig_which("bwrap")) is True
+
+
 def test_magma_under_masked_mount_is_bound_back(monkeypatch):
     _fresh_policy(monkeypatch)
     src = "/anywhere/tmp-src.m"
