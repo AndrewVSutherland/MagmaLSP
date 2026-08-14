@@ -130,10 +130,13 @@ to unsandboxed-with-a-warning; opt-out `MAGMA_LSP_NO_SANDBOX=1`, writable escape
   already resolve through the read-only root for every non-masked directory. No bind ever
   replaces a masked root wholesale (the exe path binds just the *file* when it sits directly
   at /tmp or /dev). **By design** (drop-cwd-rebind, owner decision 2026-08-14): a source
-  located strictly under a masked root (`filename="/tmp/main.m"`) cannot resolve a relative
-  sibling `load` — the throwaway tmpfs hides it and cwd is not rebound. Workaround: a normal
-  path, or an absolute load path; an explicitly-granted `MAGMA_LSP_SANDBOX_WRITABLE` dir is
-  chdir-visible so its relative writes/loads work.
+  anywhere under a masked root (`filename="/tmp/proj/main.m"`) cannot `load` a dependency that
+  is ALSO under a masked root — the mask hides it, relative OR absolute (only the generated
+  source file is bound back), and cwd is not rebound. Workaround: keep source + deps at a
+  non-masked path, or grant their directory via `MAGMA_LSP_SANDBOX_WRITABLE` (also
+  chdir-visible). An absolute `load` of a file that already lives OUTSIDE the masked roots
+  works from a /tmp source (verified); "use an absolute path" alone does NOT help when the
+  dependency is itself under /tmp (codex PR #14).
 
 ---
 

@@ -106,9 +106,13 @@ code (`magma_run`, `magma_check(execute=True)`, and the CLI equivalents) run ins
 the entire filesystem is remounted **read-only** (`/tmp` becomes a throwaway tmpfs), with fresh
 PID/IPC namespaces and no controlling terminal. Relative `load`s resolve through the read-only
 root, which exposes every directory except the masked ones — so a source at a normal path loads
-its siblings fine, while a source located **directly under `/tmp`** cannot (the tmpfs hides its
-siblings, and the sandbox deliberately never re-binds a caller-controlled directory over the
-masks); put such files at a normal path or use absolute `load` paths. The read-only remount is recursive: separately-mounted writable filesystems
+its siblings fine, while a source anywhere **under `/tmp` or `/dev`** cannot load a dependency
+that is *also* under a masked root: the throwaway tmpfs/devfs hides it whether it's referenced
+relatively or by absolute path (only the generated source file is bound back), and the sandbox
+deliberately never re-binds a caller-controlled directory over the masks. Keep the source and its
+`load` dependencies at a normal path, or grant their directory via `MAGMA_LSP_SANDBOX_WRITABLE`
+(an absolute `load` of a file that already lives outside the masked roots works from anywhere).
+The read-only remount is recursive: separately-mounted writable filesystems
 (a separate `/home`, the `/run/user/<uid>` tmpfs, …) are covered too — bubblewrap remounts
 inherited submounts read-only, using `mount_setattr` on kernels ≥ 5.12 — and the test suite
 asserts this against a real submount of the host it runs on. Well-known privileged control sockets (Docker, Podman, containerd, CRI-O, libvirt, incl. the
