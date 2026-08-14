@@ -62,12 +62,19 @@ and [`lava`](https://github.com/havarddj/lava) — we reuse rather than reinvent
 ```bash
 uv sync --extra dev                # create the venv, build tree-sitter-magma
 uv run magma-lsp-build-db          # build the signature DB (needs Magma on PATH); ~30 s
+# non-/opt install: also point it at your package tree, e.g.
+#   uv run magma-lsp-build-db --package-root /path/to/magma/package
 ```
 
-`magma-lsp-build-db` writes a per-version artifact to `~/.cache/magma-lsp/<version>.magmadb.json`
-(override with `--out` or `MAGMA_LSP_DB`). The loader prefers the artifact matching the installed
-Magma version and warns when it has to serve a stale one. Without Magma the build still produces
-a package-only DB (no kernel intrinsics) and prints a note.
+`magma-lsp-build-db` reads Magma's **package tree** (the `.m` source library). It defaults to
+`/opt/magma/package` and exits if that directory is absent — so if your Magma lives elsewhere,
+having the binary on `PATH` is not enough: pass `--package-root <dir>` or set `MAGMA_PACKAGE_ROOT`
+to your install's `package/` directory (the kernel-intrinsic half of the build, which does use the
+`magma` binary, still finds it via `PATH`/`--magma-path`). It writes a per-version artifact to
+`~/.cache/magma-lsp/<version>.magmadb.json` (override with `--out` or `MAGMA_LSP_DB`). The loader
+prefers the artifact matching the installed Magma version and warns when it has to serve a stale
+one. Without Magma the build still produces a package-only DB (no kernel intrinsics) and prints a
+note.
 
 ## Use in Claude Code
 
