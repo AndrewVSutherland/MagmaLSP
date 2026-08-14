@@ -218,9 +218,13 @@ def test_socket_masks_placed_in_argv(monkeypatch, tmp_path):
         _fresh_policy(monkeypatch)
         monkeypatch.setattr(runner, "_PRIVILEGED_SOCKETS", (str(real),))
         monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
-        argv = _sandbox_argv("/anywhere/tmp-src.m", None)
+        # cwd is the socket's own directory: the mask must come AFTER the cwd rebind (and the
+        # source bind), else the cwd rebind re-exposes the socket it just masked
+        argv = _sandbox_argv("/anywhere/tmp-src.m", str(tmp_path))
         mask = _triple_index(argv, "--ro-bind", "/dev/null", str(real))
-        assert argv.index("--tmpfs") < mask  # after the masks, before the source
+        cwd_bind = _triple_index(argv, "--ro-bind", str(tmp_path), str(tmp_path))
+        source_bind = _triple_index(argv, "--ro-bind", "/anywhere/tmp-src.m", "/anywhere/tmp-src.m")
+        assert mask > cwd_bind and mask > source_bind
     finally:
         srv.close()
 
@@ -284,6 +288,11 @@ def test_privileged_socket_unreachable_in_sandbox(monkeypatch):
         masked = [*runner._sandbox_argv(src, None), realsys.executable, "-c", probe]
         out = subprocess.run(masked, capture_output=True, text=True, timeout=30).stdout
         assert "blocked" in out and "CONNECTED" not in out
+        # regression: cwd == the socket's own directory. The cwd rebind must NOT re-expose
+        # the socket the mask covered (the mask is placed after all directory rebinds).
+        masked_cwd = [*runner._sandbox_argv(src, workdir), realsys.executable, "-c", probe]
+        out2 = subprocess.run(masked_cwd, capture_output=True, text=True, timeout=30).stdout
+        assert "blocked" in out2 and "CONNECTED" not in out2
     finally:
         srv.close()
         with contextlib.suppress(OSError):

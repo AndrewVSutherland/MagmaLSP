@@ -252,15 +252,16 @@ def _sandbox_argv(source_path: str, cwd: str | None, magma: str | None = None) -
        ``TMPDIR=/dev/shm`` the temp source (and a cwd/writable dir) can sit under /dev, and
        mounting /dev afterwards would hide it, failing every sandboxed run;
     3. a throwaway tmpfs over /tmp (hides host /tmp; gives the program scratch space);
-    3b. /dev/null over each well-known privileged daemon socket present on the host
-       (:func:`_socket_masks` — a reachable docker/podman/… socket is a host-mutation
-       channel that survives the read-only root);
     4. the Magma executable's directory(ies), when they sit under a masked mount
        (:func:`_masked_exe_dirs` — else bwrap could not exec Magma at all);
     5. ``cwd`` read-only again — so a program under /tmp (or /dev/shm) keeps its own
        directory (relative ``load``\\ s) visible through the masking mounts;
     6. user-designated writable dirs (may deliberately override cwd's read-only view);
-    7. the temp source file read-only LAST, so it stays read-only even inside a writable dir.
+    7. the temp source file read-only, so it stays read-only even inside a writable dir;
+    8. /dev/null over each present privileged daemon socket LAST (:func:`_socket_masks`) —
+       a reachable docker/podman/… socket is a host-mutation channel that survives the
+       read-only root, and being last it can't be re-exposed by a caller-controlled cwd or
+       writable dir that happens to contain it.
 
     ``--unshare-net`` must never be added (breaks Magma licensing — see module comment).
     """
@@ -291,7 +292,6 @@ def _sandbox_argv(source_path: str, cwd: str | None, magma: str | None = None) -
         "--proc", "/proc",
         "--tmpfs", "/tmp",
     ]
-    argv += _socket_masks()
     for mdir in _masked_exe_dirs(magma):
         argv += ["--ro-bind", mdir, mdir]
     if cwd:
@@ -299,13 +299,14 @@ def _sandbox_argv(source_path: str, cwd: str | None, magma: str | None = None) -
         argv += ["--ro-bind", cwd, cwd]
     for d in _writable_dirs():
         argv += ["--bind", d, d]
-    argv += [
-        "--ro-bind", source_path, source_path,
-        "--unshare-pid",
-        "--unshare-ipc",
-        "--new-session",
-        "--die-with-parent",
-    ]
+    argv += ["--ro-bind", source_path, source_path]
+    # Socket masks come LAST among the binds: a caller-supplied cwd or writable dir that
+    # contains (or is an ancestor of) a privileged socket — e.g. filename="/run/x.m" giving
+    # cwd="/run", or filename="/main.m" giving cwd="/" — would otherwise re-bind that host
+    # subtree over the /dev/null mask and re-expose the socket. Re-masking after every rebind
+    # keeps them covered regardless of the caller-controlled paths.
+    argv += _socket_masks()
+    argv += ["--unshare-pid", "--unshare-ipc", "--new-session", "--die-with-parent"]
     if cwd:
         argv += ["--chdir", cwd]
     return argv
