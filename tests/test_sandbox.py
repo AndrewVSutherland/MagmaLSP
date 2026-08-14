@@ -41,6 +41,19 @@ def _fresh_policy(monkeypatch, *, bwrap="/usr/bin/bwrap", works=True):
     monkeypatch.setattr(runner, "_warned_once", set())
 
 
+def _nonmasked_base() -> str:
+    """A writable directory whose realpath is OUTSIDE the masked roots (/tmp, /dev), for
+    relative-load tests that need the source visible via the read-only root. Skips if the
+    only writable locations resolve under a mask (e.g. HOME=/tmp/ci-user)."""
+    for cand in (os.path.expanduser("~"), "/var/tmp", os.getcwd()):
+        rp = os.path.realpath(cand)  # realpath: HOME itself may be a symlink into /tmp
+        if rp == "/" or any(rp == m or rp.startswith(m + "/") for m in ("/tmp", "/dev")):
+            continue
+        if os.path.isdir(rp) and os.access(rp, os.W_OK):
+            return rp
+    pytest.skip("no writable directory outside the masked roots (/tmp, /dev)")
+
+
 def _triple_index(argv, flag, a, b):
     """Index of the mount triple [flag, a, b] in argv (asserts it is present)."""
     for i in range(len(argv) - 2):
@@ -513,7 +526,7 @@ def test_sandboxed_relative_load_resolves_for_normal_cwd(monkeypatch):
     import tempfile
 
     monkeypatch.delenv(NO_SANDBOX_ENV, raising=False)
-    d = tempfile.mkdtemp(prefix=".sbx-relload-", dir=os.path.expanduser("~"))
+    d = tempfile.mkdtemp(prefix=".sbx-relload-", dir=_nonmasked_base())
     try:
         with open(os.path.join(d, "sib.m"), "w") as fh:
             fh.write("sibf := func<n | n + 41>;\n")
@@ -553,7 +566,7 @@ def test_sandboxed_relative_load_through_symlinked_tmp_cwd(monkeypatch):
     import tempfile
 
     monkeypatch.delenv(NO_SANDBOX_ENV, raising=False)
-    real = tempfile.mkdtemp(prefix=".sbx-symreal-", dir=os.path.expanduser("~"))
+    real = tempfile.mkdtemp(prefix=".sbx-symreal-", dir=_nonmasked_base())
     with open(os.path.join(real, "sib.m"), "w") as fh:
         fh.write("sibf := func<n | n + 41>;\n")
     link = os.path.join(runner.tempfile.gettempdir(), f"sbx-cwdlink-{os.getpid()}")
@@ -617,7 +630,7 @@ def test_writable_dir_escape_hatch_via_symlink(monkeypatch):
     import tempfile
 
     monkeypatch.delenv(NO_SANDBOX_ENV, raising=False)
-    real = tempfile.mkdtemp(prefix=".sbx-wrsym-", dir=os.path.expanduser("~"))
+    real = tempfile.mkdtemp(prefix=".sbx-wrsym-", dir=_nonmasked_base())
     link = os.path.join(runner.tempfile.gettempdir(), f"sbx-wrlink-{os.getpid()}")
     with contextlib.suppress(OSError):
         os.unlink(link)

@@ -27,10 +27,17 @@ def nonmasked_dir():
     import pathlib
     import tempfile
 
-    home = os.path.expanduser("~")
-    if not os.access(home, os.W_OK):
-        pytest.skip("no writable non-/tmp dir for relative-load tests")
-    d = tempfile.mkdtemp(prefix=".sbx-relload-", dir=home)
+    base = None
+    for cand in (os.path.expanduser("~"), "/var/tmp", os.getcwd()):
+        rp = os.path.realpath(cand)  # realpath: HOME itself may be a symlink into /tmp
+        if rp == "/" or any(rp == m or rp.startswith(m + "/") for m in ("/tmp", "/dev")):
+            continue
+        if os.path.isdir(rp) and os.access(rp, os.W_OK):
+            base = rp
+            break
+    if base is None:
+        pytest.skip("no writable directory outside the masked roots (/tmp, /dev)")
+    d = tempfile.mkdtemp(prefix=".sbx-relload-", dir=base)
     try:
         yield pathlib.Path(d)
     finally:
