@@ -168,7 +168,27 @@ def _writable_dirs() -> list[str]:
     return out
 
 
-def _sandbox_argv(source_path: str, cwd: str | None) -> list[str]:
+_MASKED_ROOTS = ("/tmp", "/dev")
+
+
+def _masked_magma_dirs(magma: str | None) -> list[str]:
+    """Directories of the Magma executable that the recipe's masking mounts would hide.
+
+    A Magma install — or a wrapper/symlink to one — under /tmp or /dev would vanish behind
+    ``--tmpfs /tmp`` / ``--dev /dev`` and every sandboxed run would fail at exec; ro-bind
+    those directories back. Both the invoked path and its realpath matter (a /tmp symlink
+    to a persistent install must stay resolvable inside the sandbox)."""
+    if not magma:
+        return []
+    out: list[str] = []
+    for p in (magma, os.path.realpath(magma)):
+        d = os.path.dirname(os.path.abspath(p))
+        if any(d == r or d.startswith(r + "/") for r in _MASKED_ROOTS) and d not in out:
+            out.append(d)
+    return out
+
+
+def _sandbox_argv(source_path: str, cwd: str | None, magma: str | None = None) -> list[str]:
     """The bwrap prefix for one execution pass, or ``[]`` when the sandbox is off.
 
     Mount order matters (later mounts shadow earlier ones):
@@ -177,10 +197,12 @@ def _sandbox_argv(source_path: str, cwd: str | None) -> list[str]:
        ``TMPDIR=/dev/shm`` the temp source (and a cwd/writable dir) can sit under /dev, and
        mounting /dev afterwards would hide it, failing every sandboxed run;
     3. a throwaway tmpfs over /tmp (hides host /tmp; gives the program scratch space);
-    4. ``cwd`` read-only again — so a program under /tmp (or /dev/shm) keeps its own
+    4. the Magma executable's directory(ies), when they sit under a masked mount
+       (:func:`_masked_magma_dirs` — else bwrap could not exec Magma at all);
+    5. ``cwd`` read-only again — so a program under /tmp (or /dev/shm) keeps its own
        directory (relative ``load``\\ s) visible through the masking mounts;
-    5. user-designated writable dirs (may deliberately override cwd's read-only view);
-    6. the temp source file read-only LAST, so it stays read-only even inside a writable dir.
+    6. user-designated writable dirs (may deliberately override cwd's read-only view);
+    7. the temp source file read-only LAST, so it stays read-only even inside a writable dir.
 
     ``--unshare-net`` must never be added (breaks Magma licensing — see module comment).
     """
@@ -211,6 +233,8 @@ def _sandbox_argv(source_path: str, cwd: str | None) -> list[str]:
         "--proc", "/proc",
         "--tmpfs", "/tmp",
     ]
+    for mdir in _masked_magma_dirs(magma):
+        argv += ["--ro-bind", mdir, mdir]
     if cwd:
         cwd = os.path.abspath(cwd)
         argv += ["--ro-bind", cwd, cwd]
@@ -277,7 +301,7 @@ def run_source(
         if not source.endswith("\n"):
             fh.write("\n")
     try:
-        wrap = _sandbox_argv(path, cwd) if sandbox else []
+        wrap = _sandbox_argv(path, cwd, magma) if sandbox else []
         argv = ["timeout", str(timeout), *wrap, magma, "-b", "-n", path]
         try:
             proc = subprocess.run(

@@ -122,6 +122,19 @@ def test_sandbox_argv_without_cwd(monkeypatch):
     assert argv.count("--ro-bind") == 2  # root + source only
 
 
+def test_magma_under_masked_mount_is_bound_back(monkeypatch):
+    _fresh_policy(monkeypatch)
+    src = "/anywhere/tmp-src.m"
+    # an install (or wrapper symlink) under /tmp would be hidden by the tmpfs: its dir must
+    # be ro-bound back, after the masks and before the source
+    argv = _sandbox_argv(src, None, "/tmp/minst/magma")
+    inst = _triple_index(argv, "--ro-bind", "/tmp/minst", "/tmp/minst")
+    assert argv.index("--tmpfs") < inst < _triple_index(argv, "--ro-bind", src, src)
+    # a normally-placed install needs no extra bind
+    argv2 = _sandbox_argv(src, None, "/opt/magma/magma")
+    assert argv2.count("--ro-bind") == 2  # root + source only
+
+
 def test_writable_dirs_bound_rw_between_cwd_and_source(monkeypatch, tmp_path, capsys):
     _fresh_policy(monkeypatch)
     missing = tmp_path / "nope"
@@ -325,6 +338,22 @@ def test_separate_writable_submounts_are_read_only(monkeypatch):
     finally:
         with contextlib.suppress(OSError):
             os.unlink(target)
+
+
+@magma
+@needs_working_bwrap
+def test_magma_invoked_via_tmp_symlink_still_runs(tmp_path, monkeypatch):
+    # a wrapper symlink under /tmp (masked by the sandbox tmpfs) must still exec: its dir is
+    # ro-bound back, and the symlink target resolves through the read-only root
+    from magma_lsp.magma.runner import find_magma, run_source
+
+    monkeypatch.delenv(NO_SANDBOX_ENV, raising=False)
+    real = find_magma(None)
+    link = tmp_path / "magma"
+    link.symlink_to(real)
+    res = run_source("print 41 + 1;", magma_path=str(link), sandbox=True, timeout=30)
+    assert "42" in res.stdout
+    assert res.returncode == 0
 
 
 @magma
