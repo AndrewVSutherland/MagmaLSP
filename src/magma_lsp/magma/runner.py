@@ -113,8 +113,8 @@ def _bwrap_functional(bwrap: str) -> bool:
         exe = sys.executable or shutil.which("true") or "/bin/true"
         try:
             proc = subprocess.run(
-                [bwrap, "--ro-bind", "/", "/", "--tmpfs", "/tmp", "--dev", "/dev",
-                 "--proc", "/proc", "--unshare-pid", "--unshare-ipc", "--new-session",
+                [bwrap, "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc",
+                 "--tmpfs", "/tmp", "--unshare-pid", "--unshare-ipc", "--new-session",
                  "--die-with-parent", exe, "-c", "pass"],
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
@@ -173,11 +173,14 @@ def _sandbox_argv(source_path: str, cwd: str | None) -> list[str]:
 
     Mount order matters (later mounts shadow earlier ones):
     1. the whole filesystem read-only;
-    2. a throwaway tmpfs over /tmp (hides host /tmp; gives the program scratch space);
-    3. ``cwd`` read-only again — so a program under /tmp keeps its own directory (relative
-       ``load``\\ s) visible through the tmpfs;
-    4. user-designated writable dirs (may deliberately override cwd's read-only view);
-    5. the temp source file read-only LAST, so it stays read-only even inside a writable dir.
+    2. fresh /dev and /proc — BEFORE any bind that could live beneath them: with
+       ``TMPDIR=/dev/shm`` the temp source (and a cwd/writable dir) can sit under /dev, and
+       mounting /dev afterwards would hide it, failing every sandboxed run;
+    3. a throwaway tmpfs over /tmp (hides host /tmp; gives the program scratch space);
+    4. ``cwd`` read-only again — so a program under /tmp (or /dev/shm) keeps its own
+       directory (relative ``load``\\ s) visible through the masking mounts;
+    5. user-designated writable dirs (may deliberately override cwd's read-only view);
+    6. the temp source file read-only LAST, so it stays read-only even inside a writable dir.
 
     ``--unshare-net`` must never be added (breaks Magma licensing — see module comment).
     """
@@ -201,7 +204,13 @@ def _sandbox_argv(source_path: str, cwd: str | None) -> list[str]:
             f"not blocked). Set {NO_SANDBOX_ENV}=1 to accept and silence this warning.",
         )
         return []
-    argv = [bwrap, "--ro-bind", "/", "/", "--tmpfs", "/tmp"]
+    argv = [
+        bwrap,
+        "--ro-bind", "/", "/",
+        "--dev", "/dev",
+        "--proc", "/proc",
+        "--tmpfs", "/tmp",
+    ]
     if cwd:
         cwd = os.path.abspath(cwd)
         argv += ["--ro-bind", cwd, cwd]
@@ -209,8 +218,6 @@ def _sandbox_argv(source_path: str, cwd: str | None) -> list[str]:
         argv += ["--bind", d, d]
     argv += [
         "--ro-bind", source_path, source_path,
-        "--dev", "/dev",
-        "--proc", "/proc",
         "--unshare-pid",
         "--unshare-ipc",
         "--new-session",

@@ -102,11 +102,16 @@ def test_sandbox_argv_shape_and_mount_order(monkeypatch):
     for flag in ("--unshare-pid", "--unshare-ipc", "--new-session", "--die-with-parent"):
         assert flag in argv
     root = _triple_index(argv, "--ro-bind", "/", "/")
+    dev = argv.index("--dev")
+    proc = argv.index("--proc")
     tmp = argv.index("--tmpfs")
     assert argv[tmp + 1] == "/tmp"
     cwd = _triple_index(argv, "--ro-bind", "/some/cwd", "/some/cwd")
     source = _triple_index(argv, "--ro-bind", src, src)
-    assert root < tmp < cwd < source  # later mounts shadow earlier ones
+    # later mounts shadow earlier ones; /dev and /proc must precede every bind that could
+    # live beneath them (TMPDIR=/dev/shm puts the source file under /dev)
+    assert root < dev < tmp and root < proc < tmp
+    assert tmp < cwd < source
     assert argv[argv.index("--chdir") + 1] == "/some/cwd"
 
 
@@ -277,6 +282,21 @@ def test_writable_dir_escape_hatch(tmp_path, monkeypatch):
     )
     assert "done" in res.output
     assert (tmp_path / "out.txt").exists()
+
+
+@magma
+@needs_working_bwrap
+def test_source_under_dev_shm_still_visible(monkeypatch):
+    # TMPDIR=/dev/shm is a real configuration: the temp source then lives under /dev, and a
+    # --dev mount placed after the source bind would hide it (every sandboxed run failing
+    # with Can't open file). tempfile.tempdir is the documented per-process override.
+    import tempfile
+
+    monkeypatch.delenv(NO_SANDBOX_ENV, raising=False)
+    monkeypatch.setattr(tempfile, "tempdir", "/dev/shm")
+    res = frontend.run('print "shm ok";', timeout=30)
+    assert "shm ok" in res.output
+    assert res.returncode == 0
 
 
 @magma

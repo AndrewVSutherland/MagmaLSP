@@ -94,8 +94,8 @@ to unsandboxed-with-a-warning; opt-out `MAGMA_LSP_NO_SANDBOX=1`, writable escape
 `MAGMA_LSP_SANDBOX_WRITABLE=dir:dir`). Verified facts that constrain the recipe:
 
 - Working shape (tested end-to-end: licensed run OK, `System("touch …")` write FAILS):
-  `timeout N bwrap --ro-bind / / --tmpfs /tmp [--ro-bind cwd cwd] --ro-bind <src.m> <src.m>
-  --dev /dev --proc /proc --unshare-pid --unshare-ipc --new-session --die-with-parent
+  `timeout N bwrap --ro-bind / / --dev /dev --proc /proc --tmpfs /tmp [--ro-bind cwd cwd]
+  --ro-bind <src.m> <src.m> --unshare-pid --unshare-ipc --new-session --die-with-parent
   [--chdir cwd] magma -b -n <src.m>`. `timeout` stays OUTSIDE bwrap (wall clock kills the
   whole tree; `--die-with-parent` + the PID namespace handle the inner side).
 - ⚠️ **`--unshare-net` BREAKS Magma licensing**: the license check reads the host MAC address
@@ -106,9 +106,12 @@ to unsandboxed-with-a-warning; opt-out `MAGMA_LSP_NO_SANDBOX=1`, writable escape
   the README/docstrings say exactly that; don't overclaim.
 - The temp `.m` is written to `tempfile.gettempdir()` (often under `/tmp`) and `--ro-bind`-ed
   back over the `--tmpfs /tmp`, which recreates the path inside the tmpfs — keep that shape.
-- Mount ORDER matters (later shadows earlier): ro root → tmpfs /tmp → cwd ro (a /tmp-based
-  program keeps its own dir visible for relative `load`s) → user writable binds (may override
-  cwd) → source file ro LAST (stays ro even inside a writable dir).
+- Mount ORDER matters (later shadows earlier): ro root → **/dev and /proc FIRST among the
+  overmounts** (with `TMPDIR=/dev/shm` the temp source lives under /dev; a later `--dev`
+  would hide it — every run fails "Can't open file" with rc 0, caught by codex on PR #14) →
+  tmpfs /tmp → cwd ro (a /tmp- or /dev/shm-based program keeps its own dir visible for
+  relative `load`s) → user writable binds (may override cwd) → source file ro LAST (stays
+  ro even inside a writable dir).
 
 ---
 
