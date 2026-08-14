@@ -234,15 +234,12 @@ def _under_masked_root(path: str) -> bool:
 
 
 def _resolved_cwd(cwd: str) -> str:
-    """The cwd to actually use inside the sandbox: fully symlink-resolved.
+    """The cwd to ``--chdir`` into inside the sandbox: fully symlink-resolved.
 
-    Both the rebind decision and ``--chdir`` must use this same resolved path. Resolving
-    fixes two things at once: (1) a symlink that CROSSES a mask boundary
-    (``/tmp/project -> /home/user/project``) — the unresolved path is hidden by the fresh
-    tmpfs, so ``--chdir /tmp/project`` would fail before Magma starts; the resolved
-    ``/home/user/project`` is visible through the read-only root; (2) a symlink that points
-    the other way (``/tmp/evil -> /``) can't smuggle the root back, because the resolved
-    target (``/``) is not beneath a masked root, so it is never rebound."""
+    Resolving lets a symlink that crosses OUT of a mask (``/tmp/project ->
+    /home/user/project``) chdir into the visible target instead of the tmpfs-hidden symlink
+    path (which would fail ``--chdir`` before Magma starts), while a symlink pointing INTO a
+    mask still resolves to a hidden path and is handled by the caller's visibility check."""
     return os.path.realpath(cwd)
 
 
@@ -301,18 +298,16 @@ def _sandbox_argv(source_path: str, cwd: str | None, magma: str | None = None) -
     4. the Magma executable's directory(ies), when they sit under a masked mount
        (:func:`_masked_exe_binds` — else bwrap could not exec Magma at all; only the file
        is bound when the executable sits directly at a masked root, never the whole root);
-    5. the symlink-resolved ``cwd`` read-only again — ONLY when it is strictly beneath a
-       masked root (:func:`_resolved_cwd` + :func:`_under_masked_root`), so a program under
-       /tmp (or /dev/shm) keeps its own directory (relative ``load``\\ s) visible through the
-       mask. A normal cwd is already visible via the read-only root and is never rebound; an
-       ancestor (``/``) or masked root (``/proc``) is never rebound either, as that would
-       re-expose the host mounts;
-    6. user-designated writable dirs (may deliberately override cwd's read-only view);
-    7. the temp source file read-only, so it stays read-only even inside a writable dir;
-    8. /dev/null over each present privileged daemon socket LAST (:func:`_socket_masks`) —
+    5. user-designated writable dirs (may deliberately override a read-only view);
+    6. the temp source file read-only, so it stays read-only even inside a writable dir;
+    7. /dev/null over each present privileged daemon socket LAST (:func:`_socket_masks`) —
        a reachable docker/podman/… socket is a host-mutation channel that survives the
-       read-only root, and being last it can't be re-exposed by a caller-controlled cwd or
-       writable dir that happens to contain it.
+       read-only root, and being last it can't be re-exposed by a writable dir that happens
+       to contain it.
+
+    The caller's cwd is NOT rebound (only ``--chdir``\\ ed into when visible): binding it
+    repeatedly proved able to re-expose masked mounts, and relative ``load``\\ s already
+    resolve through the read-only root. No bind here ever replaces a masked root wholesale.
 
     ``--unshare-net`` must never be added (breaks Magma licensing — see module comment).
     """
@@ -344,28 +339,28 @@ def _sandbox_argv(source_path: str, cwd: str | None, magma: str | None = None) -
         "--tmpfs", "/tmp",
     ]
     argv += _masked_exe_binds(magma)
-    if cwd:
-        # Resolve symlinks once and use the result for BOTH the rebind decision and --chdir
-        # (below), so a symlinked cwd can't fail --chdir (it would be hidden by the tmpfs)
-        # or smuggle a masked root back in.
-        cwd = _resolved_cwd(cwd)
-        # Only re-expose cwd when a mask would otherwise hide it (strictly beneath /tmp or
-        # /dev). Binding an ancestor like "/" (from filename="/main.m") or a masked root like
-        # "/proc" would re-expose the host procfs/devfs and undo the tmpfs — a sandbox escape.
-        if _under_masked_root(cwd):
-            argv += ["--ro-bind", cwd, cwd]
-    for d in _writable_dirs():
+    writable = _writable_dirs()
+    for d in writable:
         argv += ["--bind", d, d]
     argv += ["--ro-bind", source_path, source_path]
-    # Socket masks come LAST among the binds: a caller-supplied cwd or writable dir that
-    # contains (or is an ancestor of) a privileged socket — e.g. filename="/run/x.m" giving
-    # cwd="/run", or filename="/main.m" giving cwd="/" — would otherwise re-bind that host
-    # subtree over the /dev/null mask and re-expose the socket. Re-masking after every rebind
-    # keeps them covered regardless of the caller-controlled paths.
+    # Socket masks come LAST among the binds so a caller-designated writable dir that contains
+    # (or is an ancestor of) a privileged socket can't re-expose it over the /dev/null mask.
     argv += _socket_masks()
     argv += ["--unshare-pid", "--unshare-ipc", "--new-session", "--die-with-parent"]
     if cwd:
-        argv += ["--chdir", cwd]
+        # We do NOT re-bind the caller's cwd. Reproducing it with a bind repeatedly proved
+        # able to re-expose masked mounts (PR #14 rounds 3/6/7/8/10) and buys little: relative
+        # `load`s resolve through the read-only root, which already exposes every non-masked
+        # directory. chdir into the resolved cwd when it is visible inside the sandbox — i.e.
+        # not hidden by a mask, OR covered by an explicit writable bind (the escape hatch's
+        # whole point is that the program runs there) — else fall back to "/". Consequence
+        # (BY DESIGN): a source strictly under a masked root (/tmp, /dev) with no writable
+        # grant cannot resolve a relative sibling `load`; use a normal path or absolute loads.
+        cwd = _resolved_cwd(cwd)
+        visible = not _under_masked_root(cwd) or any(
+            cwd == w or cwd.startswith(w.rstrip("/") + "/") for w in writable
+        )
+        argv += ["--chdir", cwd if visible else "/"]
     return argv
 
 

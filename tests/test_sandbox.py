@@ -95,8 +95,7 @@ def test_broken_bwrap_warns_once_and_runs_unsandboxed(monkeypatch, capsys):
 def test_sandbox_argv_shape_and_mount_order(monkeypatch):
     _fresh_policy(monkeypatch)
     src = "/anywhere/tmp-src.m"
-    # cwd strictly beneath /tmp so it IS rebound (the only case that needs it)
-    argv = _sandbox_argv(src, "/tmp/some/cwd")
+    argv = _sandbox_argv(src, "/home/user/proj")
     assert argv[0] == "/usr/bin/bwrap"
     # licensing constraint: the network namespace must stay shared (CLAUDE.md §3b)
     assert "--unshare-net" not in argv
@@ -107,35 +106,39 @@ def test_sandbox_argv_shape_and_mount_order(monkeypatch):
     proc = argv.index("--proc")
     tmp = argv.index("--tmpfs")
     assert argv[tmp + 1] == "/tmp"
-    cwd = _triple_index(argv, "--ro-bind", "/tmp/some/cwd", "/tmp/some/cwd")
     source = _triple_index(argv, "--ro-bind", src, src)
     # later mounts shadow earlier ones; /dev and /proc must precede every bind that could
     # live beneath them (TMPDIR=/dev/shm puts the source file under /dev)
-    assert root < dev < tmp and root < proc < tmp
-    assert tmp < cwd < source
-    assert argv[argv.index("--chdir") + 1] == os.path.realpath("/tmp/some/cwd")
+    assert root < dev < tmp and root < proc < tmp < source
+    # the cwd is never rebound, only chdir'd into (visible via the read-only root)
+    assert _count_triple(argv, "--ro-bind", "/home/user/proj", "/home/user/proj") == 0
+    assert argv[argv.index("--chdir") + 1] == "/home/user/proj"
 
 
 def _count_triple(argv: list[str], flag: str, a: str, b: str) -> int:
     return sum(1 for i in range(len(argv) - 2) if argv[i : i + 3] == [flag, a, b])
 
 
-def test_cwd_rebind_only_for_masked_roots(monkeypatch):
+def test_cwd_never_rebound_and_chdir_visibility(monkeypatch):
     _fresh_policy(monkeypatch)
     src = "/anywhere/tmp-src.m"
-    # a normal cwd (already visible via the read-only root) is chdir'd into but NOT rebound;
-    # an ancestor "/" or a masked root ("/proc","/dev","/tmp") must never be rebound (would
-    # re-expose host procfs/devfs or undo the tmpfs). "/" already appears once as the root
-    # bind — the point is it must not appear a SECOND time from the cwd rebind.
-    expected_root_binds = {"/": 1, "/proc": 0, "/dev": 0, "/tmp": 0, "/home/user/proj": 0}
-    for cwd, n in expected_root_binds.items():
+    # NO cwd is ever rebound. A visible cwd (not hidden by a mask) is chdir'd into as-is; a
+    # cwd strictly beneath /tmp or /dev is hidden by the mask, so chdir falls back to "/".
+    visible = {
+        "/home/user/proj": "/home/user/proj",
+        "/": "/",
+        "/proc": "/proc",
+        "/tmp": "/tmp",  # the mask root itself exists (tmpfs), so chdir into it is fine
+        "/dev": "/dev",
+    }
+    for cwd, chdir in visible.items():
         argv = _sandbox_argv(src, cwd)
-        assert _count_triple(argv, "--ro-bind", cwd, cwd) == n
-        assert argv[argv.index("--chdir") + 1] == os.path.realpath(cwd)  # chdir'd to resolved
-    # but a cwd strictly beneath a mask IS rebound (that is the only case that needs it)
-    for cwd in ("/tmp/proj", "/dev/shm/work"):
+        assert _count_triple(argv, "--ro-bind", cwd, cwd) == (1 if cwd == "/" else 0)
+        assert argv[argv.index("--chdir") + 1] == chdir
+    for cwd in ("/tmp/proj", "/dev/shm/work"):  # hidden beneath a mask → chdir "/"
         argv = _sandbox_argv(src, cwd)
-        assert _count_triple(argv, "--ro-bind", cwd, cwd) == 1
+        assert _count_triple(argv, "--ro-bind", cwd, cwd) == 0
+        assert argv[argv.index("--chdir") + 1] == "/"
 
 
 def test_symlinked_cwd_resolves_for_chdir_and_rebind(monkeypatch):
@@ -264,13 +267,14 @@ def test_socket_masks_placed_in_argv(monkeypatch, tmp_path):
         _fresh_policy(monkeypatch)
         monkeypatch.setattr(runner, "_PRIVILEGED_SOCKETS", (str(real),))
         monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
-        # cwd is the socket's own directory: the mask must come AFTER the cwd rebind (and the
-        # source bind), else the cwd rebind re-exposes the socket it just masked
-        argv = _sandbox_argv("/anywhere/tmp-src.m", str(tmp_path))
+        # a writable dir containing the socket is the remaining re-exposure risk: the mask
+        # must come AFTER the writable bind (and the source bind)
+        monkeypatch.setenv(SANDBOX_WRITABLE_ENV, str(tmp_path))
+        argv = _sandbox_argv("/anywhere/tmp-src.m", None)
         mask = _triple_index(argv, "--ro-bind", "/dev/null", str(real))
-        cwd_bind = _triple_index(argv, "--ro-bind", str(tmp_path), str(tmp_path))
+        rw_bind = _triple_index(argv, "--bind", str(tmp_path), str(tmp_path))
         source_bind = _triple_index(argv, "--ro-bind", "/anywhere/tmp-src.m", "/anywhere/tmp-src.m")
-        assert mask > cwd_bind and mask > source_bind
+        assert mask > rw_bind and mask > source_bind
     finally:
         srv.close()
 
@@ -379,12 +383,11 @@ def test_writable_dirs_bound_rw_between_cwd_and_source(monkeypatch, tmp_path, ca
     missing = tmp_path / "nope"
     monkeypatch.setenv(SANDBOX_WRITABLE_ENV, f"{tmp_path}:{missing}")
     src = "/anywhere/tmp-src.m"
-    argv = _sandbox_argv(src, "/tmp/some/cwd")  # masked-root cwd → it is rebound
-    cwd = _triple_index(argv, "--ro-bind", "/tmp/some/cwd", "/tmp/some/cwd")
+    argv = _sandbox_argv(src, None)
     rw = _triple_index(argv, "--bind", str(tmp_path), str(tmp_path))
     source = _triple_index(argv, "--ro-bind", src, src)
-    # a writable dir may deliberately override cwd's read-only view, never the source file
-    assert cwd < rw < source
+    # writable binds come before the source file (which stays read-only even inside them)
+    assert rw < source
     assert str(missing) not in argv
     assert "not a directory" in capsys.readouterr().err
 
@@ -502,29 +505,61 @@ def test_sandboxed_execution_check_blocks_write_in_own_cwd(tmp_path, monkeypatch
 
 @magma
 @needs_working_bwrap
-def test_sandboxed_relative_load_still_resolves(tmp_path, monkeypatch):
+def test_sandboxed_relative_load_resolves_for_normal_cwd(monkeypatch):
+    # relative loads work when the source is at a NORMAL (non-masked) path: the dir is visible
+    # through the read-only root and chdir'd into. (A source under /tmp is unsupported by
+    # design — see test_tmp_direct_relative_load_is_unsupported.)
+    import contextlib
+    import tempfile
+
+    monkeypatch.delenv(NO_SANDBOX_ENV, raising=False)
+    d = tempfile.mkdtemp(prefix=".sbx-relload-", dir=os.path.expanduser("~"))
+    try:
+        with open(os.path.join(d, "sib.m"), "w") as fh:
+            fh.write("sibf := func<n | n + 41>;\n")
+        res = frontend.run(
+            'load "sib.m";\nprint sibf(1);', filename=os.path.join(d, "main.m"), timeout=30
+        )
+        assert "42" in res.output, res.output
+        assert res.returncode == 0
+    finally:
+        import shutil as _sh
+
+        with contextlib.suppress(OSError):
+            _sh.rmtree(d)
+
+
+@magma
+@needs_working_bwrap
+def test_tmp_direct_relative_load_is_unsupported(tmp_path, monkeypatch):
+    # BY DESIGN (drop-cwd-rebind): a source under /tmp cannot resolve a relative sibling load
+    # — the throwaway tmpfs hides the sibling and cwd is not rebound. This documents the
+    # deliberate limitation (workaround: a normal path, or an absolute load path).
     monkeypatch.delenv(NO_SANDBOX_ENV, raising=False)
     (tmp_path / "sib.m").write_text("sibf := func<n | n + 41>;\n", encoding="utf-8")
     res = frontend.run(
         'load "sib.m";\nprint sibf(1);', filename=str(tmp_path / "main.m"), timeout=30
     )
-    assert "42" in res.output
-    assert res.returncode == 0
+    assert "42" not in res.output  # the load does not resolve
 
 
 @magma
 @needs_working_bwrap
-def test_sandboxed_relative_load_through_symlinked_tmp_cwd(tmp_path, monkeypatch):
-    # regression: filename under a /tmp symlink that resolves OUT of /tmp. --chdir must use the
-    # resolved dir (else bwrap fails "Can't chdir", hidden by the tmpfs) so relative loads work.
+def test_sandboxed_relative_load_through_symlinked_tmp_cwd(monkeypatch):
+    # a /tmp symlink whose target is a NORMAL dir (crosses OUT of /tmp): chdir resolves to the
+    # visible target (not the tmpfs-hidden symlink path), so relative loads still work.
     import contextlib
+    import shutil as _sh
+    import tempfile
 
     monkeypatch.delenv(NO_SANDBOX_ENV, raising=False)
-    (tmp_path / "sib.m").write_text("sibf := func<n | n + 41>;\n", encoding="utf-8")
+    real = tempfile.mkdtemp(prefix=".sbx-symreal-", dir=os.path.expanduser("~"))
+    with open(os.path.join(real, "sib.m"), "w") as fh:
+        fh.write("sibf := func<n | n + 41>;\n")
     link = os.path.join(runner.tempfile.gettempdir(), f"sbx-cwdlink-{os.getpid()}")
     with contextlib.suppress(OSError):
         os.unlink(link)
-    os.symlink(str(tmp_path), link)  # /tmp/sbx-cwdlink -> tmp_path (also under /tmp here)
+    os.symlink(real, link)  # /tmp/sbx-cwdlink -> ~/.sbx-symreal-* (a normal dir)
     try:
         res = frontend.run(
             'load "sib.m";\nprint sibf(1);', filename=os.path.join(link, "main.m"), timeout=30
@@ -534,6 +569,7 @@ def test_sandboxed_relative_load_through_symlinked_tmp_cwd(tmp_path, monkeypatch
     finally:
         with contextlib.suppress(OSError):
             os.unlink(link)
+            _sh.rmtree(real)
 
 
 @magma

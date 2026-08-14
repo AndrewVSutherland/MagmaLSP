@@ -19,6 +19,24 @@ magma = pytest.mark.skipif(not _HAS_MAGMA, reason="requires a Magma install")
 needs_db = pytest.mark.skipif(not _HAS_DB, reason="requires a built signature DB")
 
 
+@pytest.fixture
+def nonmasked_dir():
+    """A writable directory OUTSIDE the sandbox's masked roots (/tmp, /dev) so relative
+    `load`s resolve through the read-only root. A source under /tmp cannot — by design
+    (drop-cwd-rebind); the sandbox never re-binds a caller directory over the masks."""
+    import pathlib
+    import tempfile
+
+    home = os.path.expanduser("~")
+    if not os.access(home, os.W_OK):
+        pytest.skip("no writable non-/tmp dir for relative-load tests")
+    d = tempfile.mkdtemp(prefix=".sbx-relload-", dir=home)
+    try:
+        yield pathlib.Path(d)
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def test_check_inconclusive_on_timeout(monkeypatch):
     monkeypatch.setattr(
         frontend, "syntax_check", lambda *a, **k: CheckResult(diagnostics=[], timed_out=True)
@@ -154,22 +172,26 @@ def test_staleness_note():
 
 
 @magma
-def test_check_execute_resolves_relative_loads(tmp_path):
+def test_check_execute_resolves_relative_loads(nonmasked_dir):
     """The execution pass runs in the source file's directory, so a relative `load` that the
-    static pass resolved does not then fail at execution time (codex #12 round 2 P1)."""
-    (tmp_path / "helpers.m").write_text("function Helper(x) return x + 1; end function;\n")
+    static pass resolved does not then fail at execution time (codex #12 round 2 P1). Uses a
+    non-masked dir: a /tmp source can't resolve relative loads under the drop-cwd-rebind
+    sandbox."""
+    (nonmasked_dir / "helpers.m").write_text("function Helper(x) return x + 1; end function;\n")
     src = 'load "helpers.m";\nprint Helper(3);\n'
-    out = frontend.check(src, execute=True, filename=str(tmp_path / "main.m"))
+    out = frontend.check(src, execute=True, filename=str(nonmasked_dir / "main.m"))
     assert out.ok, out.report
 
 
 @magma
-def test_check_execute_surfaces_loaded_file_errors(tmp_path):
+def test_check_execute_surfaces_loaded_file_errors(nonmasked_dir):
     """An error raised inside a load-ed sibling is a REAL failure of this program — the
     spoof filter must not erase it and report OK (codex #12 round 13 P1)."""
-    (tmp_path / "bad.m").write_text("function Bad(x)\nreturn 1/0;\nend function;\nz := Bad(1);\n")
+    (nonmasked_dir / "bad.m").write_text(
+        "function Bad(x)\nreturn 1/0;\nend function;\nz := Bad(1);\n"
+    )
     out = frontend.check(
-        'load "bad.m";\nprint 42;\n', execute=True, filename=str(tmp_path / "main.m")
+        'load "bad.m";\nprint 42;\n', execute=True, filename=str(nonmasked_dir / "main.m")
     )
     assert not out.ok, out.report
     assert "bad.m" in out.report and "zero denominator" in out.report
@@ -177,7 +199,7 @@ def test_check_execute_surfaces_loaded_file_errors(tmp_path):
     ok = frontend.check(
         'print "In file \\"/etc/passwd\\", line 1, column 1:";\nprint 1;\n',
         execute=True,
-        filename=str(tmp_path / "main2.m"),
+        filename=str(nonmasked_dir / "main2.m"),
     )
     assert ok.ok, ok.report
     # ...and printed positionless error text on a CLEAN exit is program output, not a
@@ -187,9 +209,11 @@ def test_check_execute_surfaces_loaded_file_errors(tmp_path):
 
 
 @magma
-def test_run_resolves_relative_loads(tmp_path):
-    (tmp_path / "helpers.m").write_text("function Helper(x) return x + 1; end function;\n")
-    res = frontend.run('load "helpers.m";\nprint Helper(41);\n', filename=str(tmp_path / "m.m"))
+def test_run_resolves_relative_loads(nonmasked_dir):
+    (nonmasked_dir / "helpers.m").write_text("function Helper(x) return x + 1; end function;\n")
+    res = frontend.run(
+        'load "helpers.m";\nprint Helper(41);\n', filename=str(nonmasked_dir / "m.m")
+    )
     assert res.returncode == 0 and "42" in res.output, res.output
 
 
