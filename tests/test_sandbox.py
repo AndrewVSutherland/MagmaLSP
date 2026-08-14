@@ -238,8 +238,25 @@ def test_privileged_socket_unreachable_in_sandbox(monkeypatch):
     import tempfile
     import threading
 
-    workdir = tempfile.mkdtemp(prefix=".sbx-sock-", dir=os.path.expanduser("~"))
-    sock = os.path.join(workdir, "docker.sock")
+    # The socket must live on a writable host path OUTSIDE the sandbox's masked roots
+    # (/tmp, /dev, /proc) — else the tmpfs, not the /dev/null mask, would be why it's
+    # unreachable. AF_UNIX paths are also capped at ~108 bytes, ruling out deep temp dirs.
+    # Try a few candidate bases; skip cleanly where none is writable (e.g. a read-only $HOME
+    # in a container), since this scenario can't be constructed there.
+    base = None
+    for cand in (os.path.expanduser("~"), "/var/tmp", os.getcwd()):
+        real = os.path.realpath(cand)
+        if real.startswith(("/tmp", "/dev", "/proc")) or not os.access(real, os.W_OK):
+            continue
+        base = real
+        break
+    if base is None:
+        pytest.skip("no writable host dir outside the masked roots to place a test socket")
+    try:
+        workdir = tempfile.mkdtemp(prefix=".sbx-sock-", dir=base)
+    except OSError:
+        pytest.skip("could not create a writable socket dir outside the masked roots")
+    sock = os.path.join(workdir, "d.sock")  # short name: AF_UNIX path length limit
     src = os.path.join(workdir, "src.m")
     open(src, "w").close()
     srv = socketmod.socket(socketmod.AF_UNIX, socketmod.SOCK_STREAM)
