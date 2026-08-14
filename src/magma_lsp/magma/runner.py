@@ -101,14 +101,21 @@ def _bwrap_functional(bwrap: str) -> bool:
     """Cached probe that the recipe actually works on this host: bwrap can be installed yet
     unable to create namespaces (unprivileged user namespaces disabled — common inside
     containers), in which case every sandboxed run would fail at launch instead of running
-    unsandboxed-with-a-warning. Probed once per process with the real flag set."""
+    unsandboxed-with-a-warning. Probed once per process with the real flag set.
+
+    The probed command is our own interpreter — guaranteed to exist and be executable on any
+    host that is running this code, with no FHS assumption (`/bin/true` does not exist on
+    e.g. NixOS, and a missing probe command would misclassify a working bwrap as broken,
+    silently dropping the sandbox). `true` ignores the ``-c pass`` arguments, so the one
+    argv shape also serves the no-``sys.executable`` fallback."""
     global _bwrap_ok
     if _bwrap_ok is None:
+        exe = sys.executable or shutil.which("true") or "/bin/true"
         try:
             proc = subprocess.run(
                 [bwrap, "--ro-bind", "/", "/", "--tmpfs", "/tmp", "--dev", "/dev",
                  "--proc", "/proc", "--unshare-pid", "--unshare-ipc", "--new-session",
-                 "--die-with-parent", "/bin/true"],
+                 "--die-with-parent", exe, "-c", "pass"],
                 stdin=subprocess.DEVNULL,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
