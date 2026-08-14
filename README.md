@@ -79,8 +79,10 @@ This repo *is* a Claude Code plugin. Add your clone as a local marketplace and i
 /reload-plugins
 ```
 
-The plugin maps `.magma` (primary) and `.m` (fallback) to languageId `magma` and launches the
-server via `uv run`. Configure via `initializationOptions` in [`.lsp.json`](.lsp.json):
+The plugin maps both `.m` (Magma's usual file suffix — Magma itself uses `.m`) and `.magma` to
+languageId `magma`, and launches the server via `uv run`. (`.m` is shared with MATLAB and
+Objective-C; in a mixed repo, narrow the mapping or use `.magma` for the files you want treated as
+Magma.) Configure via `initializationOptions` in [`.lsp.json`](.lsp.json):
 `magmaPath`, `magmaDiagnostics` (bool), `lints` (bool), `magmaTimeout` (seconds), `dbPath`.
 
 ### Two front-ends, one core
