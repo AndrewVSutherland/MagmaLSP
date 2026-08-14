@@ -104,6 +104,13 @@ to unsandboxed-with-a-warning; opt-out `MAGMA_LSP_NO_SANDBOX=1`, writable escape
   succeeds; test with a real program.
 - Therefore the sandbox blocks filesystem *mutation* but NOT shell-out or network egress —
   the README/docstrings say exactly that; don't overclaim.
+- The `--ro-bind / /` read-only IS recursive over inherited submounts (verified empirically:
+  inside the sandbox, writes to `/run/user/1000` — a separate user-writable tmpfs — plus
+  `/run` and `/var/tmp` all fail on bwrap 0.11.0/kernel 7.x; bubblewrap uses
+  `mount_setattr(AT_RECURSIVE)` on kernels ≥ 5.12). Do not confuse this with the
+  `--remount-ro` option, whose `--help` line says "does not recursively remount" — that
+  caveat is about `--remount-ro`, not `--ro-bind` (a codex review conflated them, PR #14
+  round 3). `test_separate_writable_submounts_are_read_only` re-verifies on each host.
 - The temp `.m` is written to `tempfile.gettempdir()` (often under `/tmp`) and `--ro-bind`-ed
   back over the `--tmpfs /tmp`, which recreates the path inside the tmpfs — keep that shape.
 - Mount ORDER matters (later shadows earlier): ro root → **/dev and /proc FIRST among the

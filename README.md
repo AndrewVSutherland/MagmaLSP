@@ -105,7 +105,10 @@ code (`magma_run`, `magma_check(execute=True)`, and the CLI equivalents) run ins
 [bubblewrap](https://github.com/containers/bubblewrap) sandbox whenever `bwrap` is on PATH:
 the entire filesystem is remounted **read-only** (`/tmp` becomes a throwaway tmpfs; the program's
 own directory stays readable so relative `load`s work), with fresh PID/IPC namespaces and no
-controlling terminal. Precisely stated: the sandbox blocks **filesystem mutation** — the worst
+controlling terminal. The read-only remount is recursive: separately-mounted writable filesystems
+(a separate `/home`, the `/run/user/<uid>` tmpfs, …) are covered too — bubblewrap remounts
+inherited submounts read-only, using `mount_setattr` on kernels ≥ 5.12 — and the test suite
+asserts this against a real submount of the host it runs on. Precisely stated: the sandbox blocks **filesystem mutation** — the worst
 vector — but does **not** block `System(...)`/`Pipe(...)` shell-out per se and does **not** block
 network egress. The network namespace must stay shared because Magma's license check reads the
 host MAC address (an unshared network namespace makes licensing fail); a shell can therefore

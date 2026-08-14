@@ -284,6 +284,49 @@ def test_writable_dir_escape_hatch(tmp_path, monkeypatch):
     assert (tmp_path / "out.txt").exists()
 
 
+def _writable_submount() -> str | None:
+    """First host mountpoint below / (not overmounted by the sandbox recipe) where this
+    user can write — e.g. a separate /home partition or the /run/user/<uid> tmpfs."""
+    skip = ("/tmp", "/dev", "/proc", "/sys")
+    try:
+        with open("/proc/self/mounts", encoding="utf-8") as fh:
+            for line in fh:
+                fields = line.split()
+                mp, fstype = fields[1], fields[2]
+                if mp == "/" or "\\" in mp or fstype.startswith("fuse"):
+                    continue
+                if any(mp == s or mp.startswith(s + "/") for s in skip):
+                    continue
+                if os.path.isdir(mp) and os.access(mp, os.W_OK):
+                    return mp
+    except OSError:
+        pass
+    return None
+
+
+@magma
+@needs_working_bwrap
+def test_separate_writable_submounts_are_read_only(monkeypatch):
+    # --ro-bind / / must cover recursively inherited submounts: a separate /home, the
+    # /run/user/<uid> tmpfs, ... (bubblewrap remounts them read-only — via
+    # mount_setattr(AT_RECURSIVE) on kernels >= 5.12). This asserts it empirically against
+    # a real submount of the machine running the suite.
+    import contextlib
+
+    mp = _writable_submount()
+    if mp is None:
+        pytest.skip("no separate user-writable submount on this host")
+    monkeypatch.delenv(NO_SANDBOX_ENV, raising=False)
+    target = os.path.join(mp, f"magma-lsp-sbx-submount-{os.getpid()}.txt")
+    try:
+        res = frontend.run(f'_ := System("touch {target}");\nprint "alive";', timeout=30)
+        assert "alive" in res.output
+        assert not os.path.exists(target)
+    finally:
+        with contextlib.suppress(OSError):
+            os.unlink(target)
+
+
 @magma
 @needs_working_bwrap
 def test_source_under_dev_shm_still_visible(monkeypatch):
