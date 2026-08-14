@@ -125,7 +125,18 @@ to unsandboxed-with-a-warning; opt-out `MAGMA_LSP_NO_SANDBOX=1`, writable escape
   would hide it — every run fails "Can't open file" with rc 0, caught by codex on PR #14) →
   tmpfs /tmp → cwd ro (a /tmp- or /dev/shm-based program keeps its own dir visible for
   relative `load`s) → user writable binds (may override cwd) → source file ro LAST (stays
-  ro even inside a writable dir).
+  ro even inside a writable dir). No bind ever replaces a masked root *wholesale* — cwd and
+  the Magma executable are re-exposed only when strictly *beneath* /tmp or /dev; a cwd or
+  exe sitting *directly* at /tmp or /dev binds just the file (exe) or is not rebound (cwd),
+  so the tmpfs/devfs and host tree are never restored (codex PR #14 rounds 3/6/7/8/10).
+  ⚠️ **Known limitation** (round 11, deferred to owner): a source file *directly* in `/tmp`
+  or `/dev` (e.g. `filename="/tmp/main.m"`) therefore cannot resolve a relative `load` of a
+  sibling in that same masked root — the throwaway tmpfs hides it. A file in a `/tmp`
+  *subdirectory* works (the subdir is strictly beneath the mask, so it is rebound). The
+  principled fix is to bind the *resolved* load-sibling files individually (never re-expose
+  the whole root); it needs load-path plumbing through `run_source` and load analysis in the
+  `run` path, and is entangled with the cwd-rebind design decision (keep best-effort vs.
+  drop cwd-rebind), so it is left for the owner.
 
 ---
 
