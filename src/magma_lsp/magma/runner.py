@@ -226,6 +226,24 @@ def _socket_masks() -> list[str]:
     return args
 
 
+def _under_masked_root(path: str) -> bool:
+    """True iff ``path`` is *strictly beneath* a masked root (``/tmp/x``, ``/dev/shm/x``).
+
+    Not the roots themselves, not ancestors like ``/``, not ``/proc`` — only real
+    subdirectories where user files can live behind a mask."""
+    return any(path.startswith(r + "/") for r in _MASKED_ROOTS)
+
+
+def _cwd_needs_rebind(cwd: str) -> bool:
+    """A cwd needs an explicit ``--ro-bind`` back only when it is hidden by a masking mount,
+    i.e. strictly beneath /tmp or /dev — every other directory is already visible through the
+    read-only root, so binding it is unnecessary and, for an ancestor such as ``/`` or a
+    masked root like ``/proc``, actively harmful (it re-exposes the host procfs/devfs and
+    undoes the tmpfs). Both the literal and the symlink-resolved path must qualify, so a
+    symlink under /tmp pointing at ``/`` can't smuggle the root back in."""
+    return _under_masked_root(os.path.abspath(cwd)) and _under_masked_root(os.path.realpath(cwd))
+
+
 def _masked_exe_dirs(exe: str | None) -> list[str]:
     """Directories of an executable that the recipe's masking mounts would hide.
 
@@ -254,8 +272,11 @@ def _sandbox_argv(source_path: str, cwd: str | None, magma: str | None = None) -
     3. a throwaway tmpfs over /tmp (hides host /tmp; gives the program scratch space);
     4. the Magma executable's directory(ies), when they sit under a masked mount
        (:func:`_masked_exe_dirs` — else bwrap could not exec Magma at all);
-    5. ``cwd`` read-only again — so a program under /tmp (or /dev/shm) keeps its own
-       directory (relative ``load``\\ s) visible through the masking mounts;
+    5. ``cwd`` read-only again — ONLY when it is strictly beneath a masked root
+       (:func:`_cwd_needs_rebind`), so a program under /tmp (or /dev/shm) keeps its own
+       directory (relative ``load``\\ s) visible through the mask. A normal cwd is already
+       visible via the read-only root and is never rebound; an ancestor (``/``) or masked
+       root (``/proc``) is never rebound either, as that would re-expose the host mounts;
     6. user-designated writable dirs (may deliberately override cwd's read-only view);
     7. the temp source file read-only, so it stays read-only even inside a writable dir;
     8. /dev/null over each present privileged daemon socket LAST (:func:`_socket_masks`) —
@@ -296,7 +317,11 @@ def _sandbox_argv(source_path: str, cwd: str | None, magma: str | None = None) -
         argv += ["--ro-bind", mdir, mdir]
     if cwd:
         cwd = os.path.abspath(cwd)
-        argv += ["--ro-bind", cwd, cwd]
+        # Only re-expose cwd when a mask would otherwise hide it (strictly beneath /tmp or
+        # /dev). Binding an ancestor like "/" (from filename="/main.m") or a masked root like
+        # "/proc" would re-expose the host procfs/devfs and undo the tmpfs — a sandbox escape.
+        if _cwd_needs_rebind(cwd):
+            argv += ["--ro-bind", cwd, cwd]
     for d in _writable_dirs():
         argv += ["--bind", d, d]
     argv += ["--ro-bind", source_path, source_path]

@@ -95,7 +95,8 @@ def test_broken_bwrap_warns_once_and_runs_unsandboxed(monkeypatch, capsys):
 def test_sandbox_argv_shape_and_mount_order(monkeypatch):
     _fresh_policy(monkeypatch)
     src = "/anywhere/tmp-src.m"
-    argv = _sandbox_argv(src, "/some/cwd")
+    # cwd strictly beneath /tmp so it IS rebound (the only case that needs it)
+    argv = _sandbox_argv(src, "/tmp/some/cwd")
     assert argv[0] == "/usr/bin/bwrap"
     # licensing constraint: the network namespace must stay shared (CLAUDE.md §3b)
     assert "--unshare-net" not in argv
@@ -106,13 +107,35 @@ def test_sandbox_argv_shape_and_mount_order(monkeypatch):
     proc = argv.index("--proc")
     tmp = argv.index("--tmpfs")
     assert argv[tmp + 1] == "/tmp"
-    cwd = _triple_index(argv, "--ro-bind", "/some/cwd", "/some/cwd")
+    cwd = _triple_index(argv, "--ro-bind", "/tmp/some/cwd", "/tmp/some/cwd")
     source = _triple_index(argv, "--ro-bind", src, src)
     # later mounts shadow earlier ones; /dev and /proc must precede every bind that could
     # live beneath them (TMPDIR=/dev/shm puts the source file under /dev)
     assert root < dev < tmp and root < proc < tmp
     assert tmp < cwd < source
-    assert argv[argv.index("--chdir") + 1] == "/some/cwd"
+    assert argv[argv.index("--chdir") + 1] == "/tmp/some/cwd"
+
+
+def _count_triple(argv: list[str], flag: str, a: str, b: str) -> int:
+    return sum(1 for i in range(len(argv) - 2) if argv[i : i + 3] == [flag, a, b])
+
+
+def test_cwd_rebind_only_for_masked_roots(monkeypatch):
+    _fresh_policy(monkeypatch)
+    src = "/anywhere/tmp-src.m"
+    # a normal cwd (already visible via the read-only root) is chdir'd into but NOT rebound;
+    # an ancestor "/" or a masked root ("/proc","/dev","/tmp") must never be rebound (would
+    # re-expose host procfs/devfs or undo the tmpfs). "/" already appears once as the root
+    # bind — the point is it must not appear a SECOND time from the cwd rebind.
+    expected_root_binds = {"/": 1, "/proc": 0, "/dev": 0, "/tmp": 0, "/home/user/proj": 0}
+    for cwd, n in expected_root_binds.items():
+        argv = _sandbox_argv(src, cwd)
+        assert _count_triple(argv, "--ro-bind", cwd, cwd) == n
+        assert argv[argv.index("--chdir") + 1] == os.path.abspath(cwd)  # still chdir'd
+    # but a cwd strictly beneath a mask IS rebound (that is the only case that needs it)
+    for cwd in ("/tmp/proj", "/dev/shm/work"):
+        argv = _sandbox_argv(src, cwd)
+        assert _count_triple(argv, "--ro-bind", cwd, cwd) == 1
 
 
 def test_sandbox_argv_without_cwd(monkeypatch):
@@ -319,8 +342,8 @@ def test_writable_dirs_bound_rw_between_cwd_and_source(monkeypatch, tmp_path, ca
     missing = tmp_path / "nope"
     monkeypatch.setenv(SANDBOX_WRITABLE_ENV, f"{tmp_path}:{missing}")
     src = "/anywhere/tmp-src.m"
-    argv = _sandbox_argv(src, "/some/cwd")
-    cwd = _triple_index(argv, "--ro-bind", "/some/cwd", "/some/cwd")
+    argv = _sandbox_argv(src, "/tmp/some/cwd")  # masked-root cwd → it is rebound
+    cwd = _triple_index(argv, "--ro-bind", "/tmp/some/cwd", "/tmp/some/cwd")
     rw = _triple_index(argv, "--bind", str(tmp_path), str(tmp_path))
     source = _triple_index(argv, "--ro-bind", src, src)
     # a writable dir may deliberately override cwd's read-only view, never the source file
@@ -533,6 +556,39 @@ def test_magma_invoked_via_tmp_symlink_still_runs(tmp_path, monkeypatch):
     res = run_source("print 41 + 1;", magma_path=str(link), sandbox=True, timeout=30)
     assert "42" in res.stdout
     assert res.returncode == 0
+
+
+@needs_working_bwrap
+def test_cwd_at_root_or_proc_does_not_reexpose_host_mounts(monkeypatch, tmp_path):
+    # filename="/main.m" -> cwd="/", or filename="/proc/x.m" -> cwd="/proc": the cwd rebind
+    # must NOT re-expose the host procfs (its /proc/<pid>/root is a mutation path) or undo the
+    # /tmp tmpfs. A fresh procfs under --unshare-pid shows only a couple of pids; the host one
+    # shows hundreds. Also assert a host /tmp marker stays hidden by the tmpfs.
+    import contextlib
+    import subprocess
+    import sys as realsys
+
+    monkeypatch.setattr(runner, "_PRIVILEGED_SOCKETS", ())
+    marker = f"/tmp/magma-lsp-hosttmp-marker-{os.getpid()}"
+    open(marker, "w").close()
+    src = tmp_path / "s.m"
+    src.write_text("")
+    probe = (
+        'import os\n'
+        f'print("marker", os.path.exists({marker!r}))\n'
+        'print("pids", len([p for p in os.listdir("/proc") if p.isdigit()]))'
+    )
+    try:
+        for cwd in ("/", "/proc"):
+            argv = [*runner._sandbox_argv(str(src), cwd), realsys.executable, "-c", probe]
+            r = subprocess.run(argv, capture_output=True, text=True, timeout=30)
+            out = r.stdout
+            assert "marker False" in out, f"host /tmp re-exposed with cwd={cwd}: {out or r.stderr}"
+            npids = int(out.split("pids")[1].strip())
+            assert npids < 25, f"host /proc re-exposed with cwd={cwd}: {npids} pids"
+    finally:
+        with contextlib.suppress(OSError):
+            os.unlink(marker)
 
 
 @magma
