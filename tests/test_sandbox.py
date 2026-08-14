@@ -113,7 +113,7 @@ def test_sandbox_argv_shape_and_mount_order(monkeypatch):
     # live beneath them (TMPDIR=/dev/shm puts the source file under /dev)
     assert root < dev < tmp and root < proc < tmp
     assert tmp < cwd < source
-    assert argv[argv.index("--chdir") + 1] == "/tmp/some/cwd"
+    assert argv[argv.index("--chdir") + 1] == os.path.realpath("/tmp/some/cwd")
 
 
 def _count_triple(argv: list[str], flag: str, a: str, b: str) -> int:
@@ -131,11 +131,34 @@ def test_cwd_rebind_only_for_masked_roots(monkeypatch):
     for cwd, n in expected_root_binds.items():
         argv = _sandbox_argv(src, cwd)
         assert _count_triple(argv, "--ro-bind", cwd, cwd) == n
-        assert argv[argv.index("--chdir") + 1] == os.path.abspath(cwd)  # still chdir'd
+        assert argv[argv.index("--chdir") + 1] == os.path.realpath(cwd)  # chdir'd to resolved
     # but a cwd strictly beneath a mask IS rebound (that is the only case that needs it)
     for cwd in ("/tmp/proj", "/dev/shm/work"):
         argv = _sandbox_argv(src, cwd)
         assert _count_triple(argv, "--ro-bind", cwd, cwd) == 1
+
+
+def test_symlinked_cwd_resolves_for_chdir_and_rebind(monkeypatch):
+    # a symlink under /tmp crossing OUT of the mask (/tmp/link -> ~/real): --chdir must use the
+    # resolved target (visible via the read-only root), NOT the /tmp path (hidden by the tmpfs,
+    # which made bwrap fail before Magma started); and since the target escapes the mask it is
+    # not rebound
+    import tempfile
+
+    _fresh_policy(monkeypatch)
+    # a stable target OUTSIDE the masked roots: the repo's own directory
+    target = os.path.realpath(os.getcwd())
+    link = os.path.join(tempfile.gettempdir(), f"sbx-cwdlink-{os.getpid()}")
+    if os.path.islink(link) or os.path.exists(link):
+        os.unlink(link)
+    os.symlink(target, link)
+    try:
+        argv = _sandbox_argv("/anywhere/tmp-src.m", link)
+        assert argv[argv.index("--chdir") + 1] == target  # resolved, not the /tmp symlink
+        assert _count_triple(argv, "--ro-bind", link, link) == 0  # symlink path not bound
+        assert _count_triple(argv, "--ro-bind", target, target) == 0  # target escapes mask
+    finally:
+        os.unlink(link)
 
 
 def test_sandbox_argv_without_cwd(monkeypatch):
@@ -473,6 +496,30 @@ def test_sandboxed_relative_load_still_resolves(tmp_path, monkeypatch):
     )
     assert "42" in res.output
     assert res.returncode == 0
+
+
+@magma
+@needs_working_bwrap
+def test_sandboxed_relative_load_through_symlinked_tmp_cwd(tmp_path, monkeypatch):
+    # regression: filename under a /tmp symlink that resolves OUT of /tmp. --chdir must use the
+    # resolved dir (else bwrap fails "Can't chdir", hidden by the tmpfs) so relative loads work.
+    import contextlib
+
+    monkeypatch.delenv(NO_SANDBOX_ENV, raising=False)
+    (tmp_path / "sib.m").write_text("sibf := func<n | n + 41>;\n", encoding="utf-8")
+    link = os.path.join(runner.tempfile.gettempdir(), f"sbx-cwdlink-{os.getpid()}")
+    with contextlib.suppress(OSError):
+        os.unlink(link)
+    os.symlink(str(tmp_path), link)  # /tmp/sbx-cwdlink -> tmp_path (also under /tmp here)
+    try:
+        res = frontend.run(
+            'load "sib.m";\nprint sibf(1);', filename=os.path.join(link, "main.m"), timeout=30
+        )
+        assert "42" in res.output, res.output
+        assert res.returncode == 0
+    finally:
+        with contextlib.suppress(OSError):
+            os.unlink(link)
 
 
 @magma

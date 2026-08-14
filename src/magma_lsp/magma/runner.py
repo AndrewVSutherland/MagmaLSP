@@ -234,14 +234,17 @@ def _under_masked_root(path: str) -> bool:
     return any(path.startswith(r + "/") for r in _MASKED_ROOTS)
 
 
-def _cwd_needs_rebind(cwd: str) -> bool:
-    """A cwd needs an explicit ``--ro-bind`` back only when it is hidden by a masking mount,
-    i.e. strictly beneath /tmp or /dev — every other directory is already visible through the
-    read-only root, so binding it is unnecessary and, for an ancestor such as ``/`` or a
-    masked root like ``/proc``, actively harmful (it re-exposes the host procfs/devfs and
-    undoes the tmpfs). Both the literal and the symlink-resolved path must qualify, so a
-    symlink under /tmp pointing at ``/`` can't smuggle the root back in."""
-    return _under_masked_root(os.path.abspath(cwd)) and _under_masked_root(os.path.realpath(cwd))
+def _resolved_cwd(cwd: str) -> str:
+    """The cwd to actually use inside the sandbox: fully symlink-resolved.
+
+    Both the rebind decision and ``--chdir`` must use this same resolved path. Resolving
+    fixes two things at once: (1) a symlink that CROSSES a mask boundary
+    (``/tmp/project -> /home/user/project``) — the unresolved path is hidden by the fresh
+    tmpfs, so ``--chdir /tmp/project`` would fail before Magma starts; the resolved
+    ``/home/user/project`` is visible through the read-only root; (2) a symlink that points
+    the other way (``/tmp/evil -> /``) can't smuggle the root back, because the resolved
+    target (``/``) is not beneath a masked root, so it is never rebound."""
+    return os.path.realpath(cwd)
 
 
 def _masked_exe_dirs(exe: str | None) -> list[str]:
@@ -272,11 +275,12 @@ def _sandbox_argv(source_path: str, cwd: str | None, magma: str | None = None) -
     3. a throwaway tmpfs over /tmp (hides host /tmp; gives the program scratch space);
     4. the Magma executable's directory(ies), when they sit under a masked mount
        (:func:`_masked_exe_dirs` — else bwrap could not exec Magma at all);
-    5. ``cwd`` read-only again — ONLY when it is strictly beneath a masked root
-       (:func:`_cwd_needs_rebind`), so a program under /tmp (or /dev/shm) keeps its own
-       directory (relative ``load``\\ s) visible through the mask. A normal cwd is already
-       visible via the read-only root and is never rebound; an ancestor (``/``) or masked
-       root (``/proc``) is never rebound either, as that would re-expose the host mounts;
+    5. the symlink-resolved ``cwd`` read-only again — ONLY when it is strictly beneath a
+       masked root (:func:`_resolved_cwd` + :func:`_under_masked_root`), so a program under
+       /tmp (or /dev/shm) keeps its own directory (relative ``load``\\ s) visible through the
+       mask. A normal cwd is already visible via the read-only root and is never rebound; an
+       ancestor (``/``) or masked root (``/proc``) is never rebound either, as that would
+       re-expose the host mounts;
     6. user-designated writable dirs (may deliberately override cwd's read-only view);
     7. the temp source file read-only, so it stays read-only even inside a writable dir;
     8. /dev/null over each present privileged daemon socket LAST (:func:`_socket_masks`) —
@@ -316,11 +320,14 @@ def _sandbox_argv(source_path: str, cwd: str | None, magma: str | None = None) -
     for mdir in _masked_exe_dirs(magma):
         argv += ["--ro-bind", mdir, mdir]
     if cwd:
-        cwd = os.path.abspath(cwd)
+        # Resolve symlinks once and use the result for BOTH the rebind decision and --chdir
+        # (below), so a symlinked cwd can't fail --chdir (it would be hidden by the tmpfs)
+        # or smuggle a masked root back in.
+        cwd = _resolved_cwd(cwd)
         # Only re-expose cwd when a mask would otherwise hide it (strictly beneath /tmp or
         # /dev). Binding an ancestor like "/" (from filename="/main.m") or a masked root like
         # "/proc" would re-expose the host procfs/devfs and undo the tmpfs — a sandbox escape.
-        if _cwd_needs_rebind(cwd):
+        if _under_masked_root(cwd):
             argv += ["--ro-bind", cwd, cwd]
     for d in _writable_dirs():
         argv += ["--bind", d, d]
