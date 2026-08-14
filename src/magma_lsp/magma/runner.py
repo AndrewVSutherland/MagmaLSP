@@ -183,6 +183,48 @@ def _writable_dirs() -> list[str]:
 
 _MASKED_ROOTS = ("/tmp", "/dev")
 
+# Well-known privileged control sockets. A read-only root leaves these connectable, and a
+# container/VM daemon reached through one will mount and mutate arbitrary host paths on the
+# caller's behalf — defeating the read-only filesystem entirely. We overmount each existing
+# one with /dev/null (verified: connect() then fails). This is BEST-EFFORT defence in depth,
+# not a complete boundary: shell-out and IPC/network are not blocked (Magma licensing forbids
+# --unshare-net), so a privileged socket at a path we don't know to mask is still reachable.
+_PRIVILEGED_SOCKETS = (
+    "/var/run/docker.sock",
+    "/run/docker.sock",
+    "/run/podman/podman.sock",
+    "/var/run/podman/podman.sock",
+    "/run/containerd/containerd.sock",
+    "/var/run/containerd/containerd.sock",
+    "/run/crio/crio.sock",
+    "/var/run/libvirt/libvirt-sock",
+)
+
+
+def _socket_masks() -> list[str]:
+    """``--ro-bind /dev/null <sock>`` args for each privileged control socket that exists on
+    the host, including the per-user rootless docker/podman sockets. Deduped by realpath so a
+    ``/var/run -> /run`` symlink doesn't double-mount the same target."""
+    import stat
+
+    candidates = list(_PRIVILEGED_SOCKETS)
+    uid = os.getuid()
+    for xdg in (os.environ.get("XDG_RUNTIME_DIR"), f"/run/user/{uid}"):
+        if xdg:
+            candidates += [f"{xdg}/docker.sock", f"{xdg}/podman/podman.sock"]
+    seen: set[str] = set()
+    args: list[str] = []
+    for path in candidates:
+        try:
+            real = os.path.realpath(path)
+            if real in seen or not stat.S_ISSOCK(os.stat(real).st_mode):
+                continue
+        except OSError:
+            continue  # absent / unreadable → nothing to mask
+        seen.add(real)
+        args += ["--ro-bind", "/dev/null", path]
+    return args
+
 
 def _masked_exe_dirs(exe: str | None) -> list[str]:
     """Directories of an executable that the recipe's masking mounts would hide.
@@ -210,6 +252,9 @@ def _sandbox_argv(source_path: str, cwd: str | None, magma: str | None = None) -
        ``TMPDIR=/dev/shm`` the temp source (and a cwd/writable dir) can sit under /dev, and
        mounting /dev afterwards would hide it, failing every sandboxed run;
     3. a throwaway tmpfs over /tmp (hides host /tmp; gives the program scratch space);
+    3b. /dev/null over each well-known privileged daemon socket present on the host
+       (:func:`_socket_masks` — a reachable docker/podman/… socket is a host-mutation
+       channel that survives the read-only root);
     4. the Magma executable's directory(ies), when they sit under a masked mount
        (:func:`_masked_exe_dirs` — else bwrap could not exec Magma at all);
     5. ``cwd`` read-only again — so a program under /tmp (or /dev/shm) keeps its own
@@ -246,6 +291,7 @@ def _sandbox_argv(source_path: str, cwd: str | None, magma: str | None = None) -
         "--proc", "/proc",
         "--tmpfs", "/tmp",
     ]
+    argv += _socket_masks()
     for mdir in _masked_exe_dirs(magma):
         argv += ["--ro-bind", mdir, mdir]
     if cwd:

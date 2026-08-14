@@ -103,7 +103,14 @@ to unsandboxed-with-a-warning; opt-out `MAGMA_LSP_NO_SANDBOX=1`, writable escape
   `magma -V` SKIPS the license check — a `-V` probe under `--unshare-net` misleadingly
   succeeds; test with a real program.
 - Therefore the sandbox blocks filesystem *mutation* but NOT shell-out or network egress —
-  the README/docstrings say exactly that; don't overclaim.
+  the README/docstrings say exactly that; don't overclaim. Best-effort defence in depth:
+  well-known privileged daemon sockets (docker/podman/containerd/crio/libvirt, incl. rootless
+  per-user) are `/dev/null`-overmounted where present (`_socket_masks`, verified connect()
+  then fails), since a reachable container daemon would mutate host paths and defeat the RO
+  root — but a privileged socket at a path we don't enumerate is still reachable (IPC/network
+  aren't blocked). The honest posture is "prevents casual/accidental writes", not "hardened
+  against active escape" (codex PR #14 round 6; going further = allowlisted-root view, a
+  design decision for the owner).
 - The `--ro-bind / /` read-only IS recursive over inherited submounts (verified empirically:
   inside the sandbox, writes to `/run/user/1000` — a separate user-writable tmpfs — plus
   `/run` and `/var/tmp` all fail on bwrap 0.11.0/kernel 7.x; bubblewrap uses

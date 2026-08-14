@@ -172,6 +172,109 @@ def test_real_probe_with_tmp_interpreter(tmp_path, monkeypatch):
     assert runner._bwrap_functional(orig_which("bwrap")) is True
 
 
+def test_socket_masks_existing_privileged_sockets(monkeypatch, tmp_path):
+    import socket as socketmod
+
+    real = tmp_path / "docker.sock"
+    srv = socketmod.socket(socketmod.AF_UNIX, socketmod.SOCK_STREAM)
+    srv.bind(str(real))
+    try:
+        monkeypatch.setattr(runner, "_PRIVILEGED_SOCKETS", (str(real), "/nonexistent/x.sock"))
+        monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
+        args = runner._socket_masks()
+        # existing socket masked with /dev/null; absent path skipped
+        assert args == ["--ro-bind", "/dev/null", str(real)]
+    finally:
+        srv.close()
+
+
+def test_socket_masks_skips_non_socket_and_dedupes(monkeypatch, tmp_path):
+    import socket as socketmod
+
+    regular = tmp_path / "not-a-sock"
+    regular.write_text("")  # a regular file at a socket path must NOT be masked
+    real = tmp_path / "podman.sock"
+    link = tmp_path / "podman-link.sock"  # symlink to the same socket → one bind only
+    srv = socketmod.socket(socketmod.AF_UNIX, socketmod.SOCK_STREAM)
+    srv.bind(str(real))
+    link.symlink_to(real)
+    try:
+        monkeypatch.setattr(runner, "_PRIVILEGED_SOCKETS", (str(regular), str(real), str(link)))
+        monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
+        args = runner._socket_masks()
+        assert args.count("--ro-bind") == 1
+        assert str(regular) not in args
+    finally:
+        srv.close()
+
+
+def test_socket_masks_placed_in_argv(monkeypatch, tmp_path):
+    import socket as socketmod
+
+    real = tmp_path / "docker.sock"
+    srv = socketmod.socket(socketmod.AF_UNIX, socketmod.SOCK_STREAM)
+    srv.bind(str(real))
+    try:
+        _fresh_policy(monkeypatch)
+        monkeypatch.setattr(runner, "_PRIVILEGED_SOCKETS", (str(real),))
+        monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
+        argv = _sandbox_argv("/anywhere/tmp-src.m", None)
+        mask = _triple_index(argv, "--ro-bind", "/dev/null", str(real))
+        assert argv.index("--tmpfs") < mask  # after the masks, before the source
+    finally:
+        srv.close()
+
+
+@needs_working_bwrap
+def test_privileged_socket_unreachable_in_sandbox(monkeypatch):
+    # end-to-end: a live listening socket at a "privileged" path is connectable under a bare
+    # --ro-bind / / (the read-only root does not stop connect()) but NOT once _socket_masks
+    # overmounts it with /dev/null. The socket must live OUTSIDE the masked roots (/tmp, /dev)
+    # so the tmpfs isn't what hides it — else the test would pass for the wrong reason.
+    import contextlib
+    import socket as socketmod
+    import subprocess
+    import sys as realsys
+    import tempfile
+    import threading
+
+    workdir = tempfile.mkdtemp(prefix=".sbx-sock-", dir=os.path.expanduser("~"))
+    sock = os.path.join(workdir, "docker.sock")
+    src = os.path.join(workdir, "src.m")
+    open(src, "w").close()
+    srv = socketmod.socket(socketmod.AF_UNIX, socketmod.SOCK_STREAM)
+    srv.bind(sock)
+    srv.listen(1)
+
+    def _accept():
+        with contextlib.suppress(OSError):
+            srv.accept()
+
+    threading.Thread(target=_accept, daemon=True).start()
+    monkeypatch.setattr(runner, "_PRIVILEGED_SOCKETS", (sock,))
+    monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
+    probe = (
+        f'import socket\ns=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM)\n'
+        f'try:\n s.connect({sock!r}); print("CONNECTED")\n'
+        f'except OSError as e: print("blocked", e.__class__.__name__)'
+    )
+    bwrap = shutil.which("bwrap")
+    try:
+        control = [bwrap, "--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc",
+                   "--tmpfs", "/tmp", "--die-with-parent", realsys.executable, "-c", probe]
+        assert "CONNECTED" in subprocess.run(control, capture_output=True, text=True,
+                                             timeout=30).stdout  # baseline: reachable
+        masked = [*runner._sandbox_argv(src, None), realsys.executable, "-c", probe]
+        out = subprocess.run(masked, capture_output=True, text=True, timeout=30).stdout
+        assert "blocked" in out and "CONNECTED" not in out
+    finally:
+        srv.close()
+        with contextlib.suppress(OSError):
+            os.unlink(sock)
+            os.unlink(src)
+            os.rmdir(workdir)
+
+
 def test_magma_under_masked_mount_is_bound_back(monkeypatch):
     _fresh_policy(monkeypatch)
     src = "/anywhere/tmp-src.m"

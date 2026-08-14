@@ -77,8 +77,9 @@ _SANDBOX_NOTES = {
         "READ-ONLY (bubblewrap): file writes fail, even in the program's own directory, and\n"
         "/tmp is a throwaway tmpfs. PRINT results instead of writing files. Reading files and\n"
         "relative `load`s work normally. Shell-out and network are NOT blocked (Magma\n"
-        "licensing constraint). The server admin can grant writable directories via\n"
-        "MAGMA_LSP_SANDBOX_WRITABLE or disable the sandbox via MAGMA_LSP_NO_SANDBOX=1."
+        "licensing constraint; well-known container-daemon sockets are masked best-effort).\n"
+        "The server admin can grant writable directories via MAGMA_LSP_SANDBOX_WRITABLE or\n"
+        "disable the sandbox via MAGMA_LSP_NO_SANDBOX=1."
     ),
     "disabled": (
         "DISABLED (MAGMA_LSP_NO_SANDBOX is set) — executed code runs with the caller's full\n"

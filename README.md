@@ -108,9 +108,15 @@ own directory stays readable so relative `load`s work), with fresh PID/IPC names
 controlling terminal. The read-only remount is recursive: separately-mounted writable filesystems
 (a separate `/home`, the `/run/user/<uid>` tmpfs, …) are covered too — bubblewrap remounts
 inherited submounts read-only, using `mount_setattr` on kernels ≥ 5.12 — and the test suite
-asserts this against a real submount of the host it runs on. Precisely stated: the sandbox blocks **filesystem mutation** — the worst
-vector — but does **not** block `System(...)`/`Pipe(...)` shell-out per se and does **not** block
-network egress. The network namespace must stay shared because Magma's license check reads the
+asserts this against a real submount of the host it runs on. Well-known privileged control sockets (Docker, Podman, containerd, CRI-O, libvirt, incl. the
+rootless per-user ones) are additionally masked with `/dev/null` where present, since a container
+daemon reached through one would mutate host paths on the caller's behalf and defeat the read-only
+root. Precisely stated: the sandbox blocks **filesystem mutation** through the normal filesystem —
+the worst vector — but does **not** block `System(...)`/`Pipe(...)` shell-out per se and does
+**not** block network egress. The socket masking is best-effort defence in depth, not a complete
+boundary: because IPC/network isn't blocked, a privileged daemon socket at a path we don't know to
+mask remains reachable. Treat the sandbox as preventing casual and accidental filesystem writes
+by generated code, not as a hardened boundary against code actively trying to escape. The network namespace must stay shared because Magma's license check reads the
 host MAC address (an unshared network namespace makes licensing fail); a shell can therefore
 still be spawned, but it runs against the same read-only filesystem. The parse-only diagnostics
 passes execute nothing user-level and are not sandboxed, which keeps the every-edit syntax check
