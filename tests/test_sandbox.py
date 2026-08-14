@@ -360,6 +360,20 @@ def test_magma_under_masked_mount_is_bound_back(monkeypatch):
     assert argv2.count("--ro-bind") == 2  # root + source only
 
 
+def test_magma_directly_at_masked_root_binds_only_the_file(monkeypatch):
+    # MAGMA_PATH="/tmp/magma": binding its DIR would be `--ro-bind /tmp /tmp`, re-exposing the
+    # host /tmp and undoing the throwaway tmpfs. Only the FILE must be bound.
+    _fresh_policy(monkeypatch)
+    src = "/anywhere/tmp-src.m"
+    argv = _sandbox_argv(src, None, "/tmp/magma")
+    assert _count_triple(argv, "--ro-bind", "/tmp", "/tmp") == 0  # whole root NOT re-bound
+    assert _triple_index(argv, "--ro-bind", "/tmp/magma", "/tmp/magma") > argv.index("--tmpfs")
+    # same for a device-tree executable
+    argv2 = _sandbox_argv(src, None, "/dev/magma")
+    assert _count_triple(argv2, "--ro-bind", "/dev", "/dev") == 0
+    assert _triple_index(argv2, "--ro-bind", "/dev/magma", "/dev/magma") > 0
+
+
 def test_writable_dirs_bound_rw_between_cwd_and_source(monkeypatch, tmp_path, capsys):
     _fresh_policy(monkeypatch)
     missing = tmp_path / "nope"

@@ -110,11 +110,10 @@ def _probe_argv(bwrap: str) -> list[str]:
     mounts = ["--ro-bind", "/", "/", "--dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp"]
     flags = ["--unshare-pid", "--unshare-ipc", "--new-session", "--die-with-parent"]
     true = shutil.which("true")
-    if true and not _masked_exe_dirs(true):
+    if true and not _exe_needs_unmasking(true):
         return [bwrap, *mounts, *flags, true]
     exe = sys.executable or true or "/bin/true"
-    for d in _masked_exe_dirs(exe):
-        mounts += ["--ro-bind", d, d]
+    mounts += _masked_exe_binds(exe)
     return [bwrap, *mounts, *flags, exe, "-c", "pass"]
 
 
@@ -247,21 +246,47 @@ def _resolved_cwd(cwd: str) -> str:
     return os.path.realpath(cwd)
 
 
-def _masked_exe_dirs(exe: str | None) -> list[str]:
-    """Directories of an executable that the recipe's masking mounts would hide.
-
-    An executable — Magma, or the probe's fallback interpreter — under /tmp or /dev would
-    vanish behind ``--tmpfs /tmp`` / ``--dev /dev`` and exec would fail; ro-bind those
-    directories back. Both the invoked path and its realpath matter (a /tmp symlink to a
-    persistent install must stay resolvable inside the sandbox)."""
+def _exe_needs_unmasking(exe: str | None) -> bool:
+    """True iff the recipe's masking mounts would hide ``exe`` (its dir is a masked root or
+    strictly beneath one). Used to prefer an *unmasked* probe command."""
     if not exe:
-        return []
-    out: list[str] = []
+        return False
     for p in (exe, os.path.realpath(exe)):
         d = os.path.dirname(os.path.abspath(p))
-        if any(d == r or d.startswith(r + "/") for r in _MASKED_ROOTS) and d not in out:
-            out.append(d)
-    return out
+        if d in _MASKED_ROOTS or _under_masked_root(d):
+            return True
+    return False
+
+
+def _masked_exe_binds(exe: str | None) -> list[str]:
+    """``--ro-bind`` args that keep an executable the masking mounts would otherwise hide
+    (Magma, or the probe's fallback interpreter) reachable inside the sandbox.
+
+    Bind the executable's *directory* when it is strictly beneath a masked root
+    (``/tmp/inst``, ``/dev/shm/x``) — that exposes the wrapper's sibling files without
+    touching the rest of the root. But when the executable sits *directly* at a masked root
+    (``/tmp/magma``, ``/dev/magma``), bind only the FILE: re-binding the whole ``/tmp`` /
+    ``/dev`` would undo the throwaway tmpfs / fresh devfs and re-expose the host tree. Both
+    the invoked path and its realpath are covered (a /tmp symlink to a persistent install)."""
+    if not exe:
+        return []
+    binds: list[str] = []
+    seen: set[tuple[str, str]] = set()
+    for p in (exe, os.path.realpath(exe)):
+        ap = os.path.abspath(p)
+        d = os.path.dirname(ap)
+        if _under_masked_root(d):
+            key = ("dir", d)
+            if key not in seen:
+                seen.add(key)
+                binds += ["--ro-bind", d, d]
+        elif d in _MASKED_ROOTS:
+            key = ("file", ap)
+            if key not in seen:
+                seen.add(key)
+                binds += ["--ro-bind", ap, ap]
+        # else: dir not masked (e.g. /opt/magma) — visible via the read-only root, no bind
+    return binds
 
 
 def _sandbox_argv(source_path: str, cwd: str | None, magma: str | None = None) -> list[str]:
@@ -274,7 +299,8 @@ def _sandbox_argv(source_path: str, cwd: str | None, magma: str | None = None) -
        mounting /dev afterwards would hide it, failing every sandboxed run;
     3. a throwaway tmpfs over /tmp (hides host /tmp; gives the program scratch space);
     4. the Magma executable's directory(ies), when they sit under a masked mount
-       (:func:`_masked_exe_dirs` — else bwrap could not exec Magma at all);
+       (:func:`_masked_exe_binds` — else bwrap could not exec Magma at all; only the file
+       is bound when the executable sits directly at a masked root, never the whole root);
     5. the symlink-resolved ``cwd`` read-only again — ONLY when it is strictly beneath a
        masked root (:func:`_resolved_cwd` + :func:`_under_masked_root`), so a program under
        /tmp (or /dev/shm) keeps its own directory (relative ``load``\\ s) visible through the
@@ -317,8 +343,7 @@ def _sandbox_argv(source_path: str, cwd: str | None, magma: str | None = None) -
         "--proc", "/proc",
         "--tmpfs", "/tmp",
     ]
-    for mdir in _masked_exe_dirs(magma):
-        argv += ["--ro-bind", mdir, mdir]
+    argv += _masked_exe_binds(magma)
     if cwd:
         # Resolve symlinks once and use the result for BOTH the rebind decision and --chdir
         # (below), so a symlinked cwd can't fail --chdir (it would be hidden by the tmpfs)
