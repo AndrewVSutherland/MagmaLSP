@@ -165,17 +165,21 @@ def sandbox_state() -> str:
 
 
 def _writable_dirs() -> list[str]:
+    # realpath (not abspath): the bind and the cwd-visibility check must agree on the same
+    # canonical path. Granting a symlink like /tmp/work -> /home/user/work must bind (and be
+    # chdir-visible as) /home/user/work — which is what _resolved_cwd() also selects — else
+    # the program lands on the read-only twin and its relative writes fail.
     out: list[str] = []
     for d in os.environ.get(SANDBOX_WRITABLE_ENV, "").split(":"):
         if not d:
             continue
-        ab = os.path.abspath(d)
-        if os.path.isdir(ab):
-            out.append(ab)
+        rp = os.path.realpath(d)
+        if os.path.isdir(rp):
+            out.append(rp)
         else:
             _warn_once(
-                f"writable:{ab}",
-                f"magma-lsp: {SANDBOX_WRITABLE_ENV} entry is not a directory, ignoring: {ab}",
+                f"writable:{rp}",
+                f"magma-lsp: {SANDBOX_WRITABLE_ENV} entry is not a directory, ignoring: {rp}",
             )
     return out
 

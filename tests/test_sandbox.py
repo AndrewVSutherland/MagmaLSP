@@ -596,6 +596,47 @@ def test_writable_dir_escape_hatch(tmp_path, monkeypatch):
     assert (tmp_path / "out.txt").exists()
 
 
+def test_writable_dirs_resolves_symlinks(monkeypatch, tmp_path):
+    # a granted writable dir given via a symlink must bind (and chdir to) its realpath, so it
+    # agrees with _resolved_cwd(); else the bind and cwd disagree and writes hit the ro twin
+    real = tmp_path / "real"
+    real.mkdir()
+    link = tmp_path / "link"
+    link.symlink_to(real)
+    monkeypatch.setenv(SANDBOX_WRITABLE_ENV, str(link))
+    assert runner._writable_dirs() == [str(real)]
+
+
+@magma
+@needs_working_bwrap
+def test_writable_dir_escape_hatch_via_symlink(monkeypatch):
+    # grant a /tmp symlink pointing at a normal dir: a relative write from a source in it must
+    # land in the real dir (codex PR #14 — bind and cwd must use the same realpath)
+    import contextlib
+    import shutil as _sh
+    import tempfile
+
+    monkeypatch.delenv(NO_SANDBOX_ENV, raising=False)
+    real = tempfile.mkdtemp(prefix=".sbx-wrsym-", dir=os.path.expanduser("~"))
+    link = os.path.join(runner.tempfile.gettempdir(), f"sbx-wrlink-{os.getpid()}")
+    with contextlib.suppress(OSError):
+        os.unlink(link)
+    os.symlink(real, link)
+    monkeypatch.setenv(SANDBOX_WRITABLE_ENV, link)
+    try:
+        res = frontend.run(
+            '_ := System("touch out.txt");\nprint "done";',
+            filename=os.path.join(link, "main.m"),
+            timeout=30,
+        )
+        assert "done" in res.output
+        assert os.path.exists(os.path.join(real, "out.txt"))
+    finally:
+        with contextlib.suppress(OSError):
+            os.unlink(link)
+            _sh.rmtree(real)
+
+
 def _writable_submount() -> str | None:
     """First host mountpoint below / (not overmounted by the sandbox recipe) where this
     user can write — e.g. a separate /home partition or the /run/user/<uid> tmpfs."""
