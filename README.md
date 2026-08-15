@@ -1,5 +1,7 @@
 # MagmaLSP
 
+[![CI](https://github.com/AndrewVSutherland2/MagmaLSP/actions/workflows/ci.yml/badge.svg)](https://github.com/AndrewVSutherland2/MagmaLSP/actions/workflows/ci.yml)
+
 A language server and Claude Code plugin for the [Magma](http://magma.maths.usyd.edu.au/) computer
 algebra system. It gives an LLM (and human) accurate, version-current knowledge of Magma's
 intrinsics and a real error signal from Magma itself, so generated Magma is *reliable* and
@@ -42,21 +44,37 @@ Built on [`pygls`](https://github.com/openlawlibrary/pygls). The Magma grammar a
 formatter come from the MIT-licensed [`tree-sitter-magma`](https://github.com/edgarcosta/tree-sitter-magma)
 and [`lava`](https://github.com/havarddj/lava) — we reuse rather than reinvent them.
 
-## Install & build
+## Requirements
 
-Requires [`uv`](https://docs.astral.sh/uv/) and a C compiler plus Python headers to build the
-tree-sitter grammar (if the system Python lacks `Python.h`, `uv python install 3.12` first —
-uv-managed Pythons bundle headers).
+- A **licensed [Magma](http://magma.maths.usyd.edu.au/) installation** (developed and tested
+  against V2.29-9). The signature DB is built from *your* install — nothing Magma-owned ships
+  with this repo. Without a runnable Magma everything degrades honestly rather than silently:
+  the server falls back to static-only diagnostics (tree-sitter syntax errors + the static
+  checks), `magma_check`/`magma_run` say so explicitly, and the DB build produces a package-only
+  DB (no kernel intrinsics) from the install's package tree.
+- **Linux** (macOS is untested).
+- [`uv`](https://docs.astral.sh/uv/).
+- A **C compiler** and Python headers, to build the tree-sitter grammar (if the system Python
+  lacks `Python.h`, `uv python install 3.12` first — uv-managed Pythons bundle headers).
+
+## Install & build
 
 ```bash
 uv sync --extra dev                # create the venv, build tree-sitter-magma
 uv run magma-lsp-build-db          # build the signature DB (needs Magma on PATH); ~30 s
+# non-/opt install: also point it at your package tree, e.g.
+#   uv run magma-lsp-build-db --package-root /path/to/magma/package
 ```
 
-`magma-lsp-build-db` writes a per-version artifact to `~/.cache/magma-lsp/<version>.magmadb.json`
-(override with `--out` or `MAGMA_LSP_DB`). The loader prefers the artifact matching the installed
-Magma version and warns when it has to serve a stale one. Without Magma the build still produces
-a package-only DB (no kernel intrinsics) and prints a note.
+`magma-lsp-build-db` reads Magma's **package tree** (the `.m` source library). It defaults to
+`/opt/magma/package` and exits if that directory is absent — so if your Magma lives elsewhere,
+having the binary on `PATH` is not enough: pass `--package-root <dir>` or set `MAGMA_PACKAGE_ROOT`
+to your install's `package/` directory (the kernel-intrinsic half of the build, which does use the
+`magma` binary, still finds it via `PATH`/`--magma-path`). It writes a per-version artifact to
+`~/.cache/magma-lsp/<version>.magmadb.json` (override with `--out` or `MAGMA_LSP_DB`). The loader
+prefers the artifact matching the installed Magma version and warns when it has to serve a stale
+one. Without Magma the build still produces a package-only DB (no kernel intrinsics) and prints a
+note.
 
 ## Use in Claude Code
 
@@ -68,8 +86,10 @@ This repo *is* a Claude Code plugin. Add your clone as a local marketplace and i
 /reload-plugins
 ```
 
-The plugin maps `.magma` (primary) and `.m` (fallback) to languageId `magma` and launches the
-server via `uv run`. Configure via `initializationOptions` in [`.lsp.json`](.lsp.json):
+The plugin maps both `.m` (Magma's usual file suffix — Magma itself uses `.m`) and `.magma` to
+languageId `magma`, and launches the server via `uv run`. (`.m` is shared with MATLAB and
+Objective-C; in a mixed repo, narrow the mapping or use `.magma` for the files you want treated as
+Magma.) Configure via `initializationOptions` in [`.lsp.json`](.lsp.json):
 `magmaPath`, `magmaDiagnostics` (bool), `lints` (bool), `magmaTimeout` (seconds), `dbPath`.
 
 ### Two front-ends, one core

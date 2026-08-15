@@ -24,6 +24,8 @@ import argparse
 import importlib.util
 import json
 import os
+import shlex
+from pathlib import Path
 
 ARMS = ("closed", "raw", "lsp")
 
@@ -56,7 +58,7 @@ EXACTLY like this:
 Iterate on errors and output as needed until you are confident, then write the result file.
 
 RULES: the plain `magma` binary is your ONLY Magma access — do NOT use magma-lsp-cli or any other
-helper, and do NOT read any files outside {dir} (in particular nothing under /home/claude/MagmaLSP).
+helper, and do NOT read any files outside {dir} (in particular nothing under {repo}).
 Set n_runs = number of magma executions, n_lookups = 0.
 """
 
@@ -64,16 +66,16 @@ LSP = """
 You have the Magma-LSP tool suite (and no other Magma access). Create your private working
 directory {dir} (mkdir -p) and write candidate programs there. The commands:
 
-  uv run --project /home/claude/MagmaLSP magma-lsp-cli guide            # one-page Magma conventions & pitfalls brief (worth reading first)
-  uv run --project /home/claude/MagmaLSP magma-lsp-cli search <words>   # find intrinsic names by concept/keyword
-  uv run --project /home/claude/MagmaLSP magma-lsp-cli lookup <Name>    # exact signatures + docs for an intrinsic
-  uv run --project /home/claude/MagmaLSP magma-lsp-cli check <file.m>   # static + Magma diagnostics for your program
-  uv run --project /home/claude/MagmaLSP magma-lsp-cli run <file.m>     # execute the program sandboxed, see its output
+  uv run --project {repo} magma-lsp-cli guide            # one-page Magma conventions & pitfalls brief (worth reading first)
+  uv run --project {repo} magma-lsp-cli search <words>   # find intrinsic names by concept/keyword
+  uv run --project {repo} magma-lsp-cli lookup <Name>    # exact signatures + docs for an intrinsic
+  uv run --project {repo} magma-lsp-cli check <file.m>   # static + Magma diagnostics for your program
+  uv run --project {repo} magma-lsp-cli run <file.m>     # execute the program sandboxed, see its output
 
 Iterate as needed; it is wise to `run` your final program and confirm its output before finishing.
 
 RULES: do NOT invoke the plain `magma` binary directly, and do NOT read any files under
-/home/claude/MagmaLSP yourself — interact with Magma only through the commands above.
+{repo} yourself — interact with Magma only through the commands above.
 Set n_runs = number of check/run calls, n_lookups = number of guide/search/lookup calls.
 """
 
@@ -98,8 +100,15 @@ def main() -> int:
     ap.add_argument("--trials", type=int, default=3)
     ap.add_argument("--arms", nargs="+", default=list(ARMS), choices=ARMS)
     ap.add_argument("--jobdir", required=True, help="directory for job specs, workdirs, and outputs")
+    ap.add_argument(
+        "--repo-root",
+        default=None,
+        help="MagmaLSP checkout the raw/lsp arm prompts reference (default: this file's repo)",
+    )
     args = ap.parse_args()
 
+    default_root = Path(__file__).resolve().parents[1]
+    repo = os.path.abspath(args.repo_root) if args.repo_root else str(default_root)
     tasks = load_tasks(args.tasks)
     os.makedirs(os.path.join(args.jobdir, "out"), exist_ok=True)
     manifest = []
@@ -109,7 +118,11 @@ def main() -> int:
             for k in range(args.trials):
                 out = os.path.join(args.jobdir, "out", f"job-{i}.json")
                 work = os.path.join(args.jobdir, "work", f"job-{i}")
-                spec_text = CORE.format(prompt=t["prompt"], out=out) + ARM_TEXT[arm].format(dir=work)
+                # The workdir and repo root are interpolated into shell command lines the
+                # agent runs verbatim — quote them (a no-op for metacharacter-free paths).
+                spec_text = CORE.format(prompt=t["prompt"], out=out) + ARM_TEXT[arm].format(
+                    dir=shlex.quote(work), repo=shlex.quote(repo)
+                )
                 spec_path = os.path.join(args.jobdir, f"job-{i}.txt")
                 with open(spec_path, "w") as f:
                     f.write(spec_text)

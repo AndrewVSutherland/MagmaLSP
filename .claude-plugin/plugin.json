@@ -1,7 +1,7 @@
 {
   "name": "magma-lsp",
   "displayName": "Magma Language Server",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Signature intelligence and Magma-backed diagnostics for the Magma computer algebra system",
   "author": { "name": "MagmaLSP contributors" },
   "homepage": "https://github.com/AndrewVSutherland2/MagmaLSP",
