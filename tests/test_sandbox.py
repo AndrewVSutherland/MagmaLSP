@@ -39,6 +39,10 @@ def _fresh_policy(monkeypatch, *, bwrap="/usr/bin/bwrap", works=True):
     monkeypatch.setattr(runner.shutil, "which", lambda name: bwrap)
     monkeypatch.setattr(runner, "_bwrap_ok", works)
     monkeypatch.setattr(runner, "_warned_once", set())
+    # Neutralize host daemon sockets so argv-shape assertions are deterministic regardless of
+    # the machine: a CI runner with Docker installed has /var/run/docker.sock, which would add
+    # `--ro-bind /dev/null <sock>` entries and break exact-count checks (real GitHub CI failure).
+    monkeypatch.setattr(runner, "_PRIVILEGED_SOCKETS", ())
 
 
 def _nonmasked_base() -> str:
@@ -179,6 +183,7 @@ def test_symlinked_cwd_resolves_for_chdir_and_rebind(monkeypatch):
 
 def test_sandbox_argv_without_cwd(monkeypatch):
     _fresh_policy(monkeypatch)
+    monkeypatch.setattr(runner, "_socket_masks", list)  # exact-count check: no host sockets
     argv = _sandbox_argv("/anywhere/tmp-src.m", None)
     assert "--chdir" not in argv
     assert argv.count("--ro-bind") == 2  # root + source only
@@ -366,6 +371,7 @@ def test_privileged_socket_unreachable_in_sandbox(monkeypatch):
 
 def test_magma_under_masked_mount_is_bound_back(monkeypatch):
     _fresh_policy(monkeypatch)
+    monkeypatch.setattr(runner, "_socket_masks", list)  # exact-count check: no host sockets
     src = "/anywhere/tmp-src.m"
     # an install (or wrapper symlink) under /tmp would be hidden by the tmpfs: its dir must
     # be ro-bound back, after the masks and before the source
