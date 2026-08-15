@@ -36,7 +36,7 @@ Current environment (verified 2026-08):
 | Binary | `/opt/magma/magma.exe` |
 | Wrapper | `/usr/local/bin/magma` (a copy of the wrapper, not a symlink — derive the install dir by *probing*, not `realpath`; the code checks `dirname(realpath(magma))` then falls back to `/opt/magma`) |
 | License | `/opt/magma/magmapassfile`; set by the wrapper |
-| Repo | `https://github.com/AndrewVSutherland2/MagmaLSP` — fetch/push confirmed, branch `main` |
+| Repo | `https://github.com/AndrewVSutherland/MagmaLSP` — fetch/push confirmed, branch `main` (moved from `AndrewVSutherland2`, which still redirects) |
 
 **The wrapper** (`/opt/magma/magma`) sets the env Magma needs and `exec`s the binary. If you call
 `magma.avx2.exe` directly **without** `MAGMAPASSFILE` you get `Error: MAGMAPASSFILE not set.` — so **always
