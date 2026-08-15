@@ -31,8 +31,9 @@ from .magma.diagnostics import MagmaDiagnostic
 from .magma.runner import find_magma, run_source, sane_timeout
 from .magma.validate import execution_check, syntax_check
 
-# Memory ceiling for the execution path. The trusted-colleague sandbox is timeout + memory limit
-# (verified reliable, CLAUDE.md §3); OS-level isolation is deferred until the audience widens.
+# Memory ceiling for the execution path; timeout + memory limit are always enforced
+# (verified reliable, CLAUDE.md §3). Execution passes additionally run inside the bubblewrap
+# OS sandbox when available (read-only filesystem — CLAUDE.md §3b, `magma.runner`).
 RUN_MEMORY_BYTES = 2 * 1024 * 1024 * 1024
 
 # Output budget for `run`: enough for real results, small enough not to blow an agent's context.
@@ -447,20 +448,23 @@ def run(
     magma_path: str | None = None,
     filename: str | None = None,
 ) -> RunOutcome:
-    """Execute ``source`` in a fresh sandboxed Magma (timeout + in-process memory limit).
+    """Execute ``source`` in a fresh sandboxed Magma (timeout + in-process memory limit,
+    plus the bubblewrap OS sandbox when available — read-only filesystem, writes fail).
 
     Error locations are remapped to the user program's own line numbers, and output beyond
     ``max_output`` chars is head+tail truncated (tail preserved: errors/results live there).
     ``SetQuitOnError`` makes the exit code meaningful (nonzero on the first runtime error).
     When ``filename`` is given, the process runs in that file's directory so relative
     ``load`` paths resolve as they would running the file in place (Magma resolves them
-    against the process cwd).
+    against the process cwd); that directory stays readable inside the sandbox.
     """
     timeout = sane_timeout(timeout, default=30.0)
     preamble = _RUN_PREAMBLE + f"SetMemoryLimit({memory_bytes});\nSetQuitOnError(true);\n"
     offset = preamble.count("\n")
     cwd = os.path.dirname(os.path.abspath(filename)) if filename else None
-    res = run_source(source, timeout=timeout, preamble=preamble, magma_path=magma_path, cwd=cwd)
+    res = run_source(
+        source, timeout=timeout, preamble=preamble, magma_path=magma_path, cwd=cwd, sandbox=True
+    )
     out = _remap_run_output(res.stdout, offset)
     out, truncated = _truncate_output(out, max_output)
     return RunOutcome(out, res.returncode, res.timed_out, truncated)

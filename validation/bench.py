@@ -87,6 +87,22 @@ def main() -> int:
         list(pool.map(_magma_check, range(n)))
     dt = time.perf_counter() - t
     print(f"{n} checks on {workers} workers: {dt:.1f}s -> {n / dt:.0f} checks/sec")
+
+    print("\n=== Magma execution pass (bwrap sandbox on vs off) ===")
+    from magma_lsp.magma.runner import NO_SANDBOX_ENV, sandbox_state
+    from magma_lsp.magma.validate import execution_check
+
+    prior = os.environ.pop(NO_SANDBOX_ENV, None)
+    print(f"sandbox state: {sandbox_state()}")
+    on = _time(lambda: execution_check("print 1;", timeout=15), n=10)
+    os.environ[NO_SANDBOX_ENV] = "1"
+    off = _time(lambda: execution_check("print 1;", timeout=15), n=10)
+    if prior is None:
+        del os.environ[NO_SANDBOX_ENV]
+    else:
+        os.environ[NO_SANDBOX_ENV] = prior
+    print(f"execution check, sandboxed:   {_ms(on)}")
+    print(f"execution check, no sandbox:  {_ms(off)}")
     return 0
 
 

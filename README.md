@@ -119,10 +119,44 @@ The plugin bundles **two** ways into the same core intelligence (`src/magma_lsp/
   [`eval/FINDINGS_trap.md`](eval/FINDINGS_trap.md), [`eval/FINDINGS_haiku.md`](eval/FINDINGS_haiku.md)).
   The CLI ([`magma-lsp-cli`](src/magma_lsp/cli.py)) exposes the same operations from a shell.
 
-**Execution sandbox (current):** every `run`/`check` is a fresh, hermetic Magma process under a
-wall-clock `timeout` and an in-process `SetMemoryLimit`. This suits a trial with **trusted users**;
-it does *not* yet block Magma `System(...)`/`Pipe(...)` shell-out, file writes, or network — add OS
-isolation (restricted user / cgroup / namespace) before exposing it to untrusted input.
+**Execution sandbox:** every `run`/`check` is a fresh, hermetic Magma process under a wall-clock
+`timeout` and an in-process `SetMemoryLimit`. In addition, the passes that actually *execute* user
+code (`magma_run`, `magma_check(execute=True)`, and the CLI equivalents) run inside a
+[bubblewrap](https://github.com/containers/bubblewrap) sandbox whenever `bwrap` is on PATH:
+the entire filesystem is remounted **read-only** (`/tmp` becomes a throwaway tmpfs), with fresh
+PID/IPC namespaces and no controlling terminal. Relative `load`s resolve through the read-only
+root, which exposes every directory except the masked ones — so a source at a normal path loads
+its siblings fine, while a source anywhere **under `/tmp` or `/dev`** cannot load a dependency
+that is *also* under a masked root: the throwaway tmpfs/devfs hides it whether it's referenced
+relatively or by absolute path (only the generated source file is bound back), and the sandbox
+deliberately never re-binds a caller-controlled directory over the masks. Keep the source and its
+`load` dependencies at a normal path, or grant their directory via `MAGMA_LSP_SANDBOX_WRITABLE`
+(an absolute `load` of a file that already lives outside the masked roots works from anywhere).
+The read-only remount is recursive: separately-mounted writable filesystems
+(a separate `/home`, the `/run/user/<uid>` tmpfs, …) are covered too — bubblewrap remounts
+inherited submounts read-only, using `mount_setattr` on kernels ≥ 5.12 — and the test suite
+asserts this against a real submount of the host it runs on. Well-known privileged control sockets (Docker, Podman, containerd, CRI-O, libvirt, incl. the
+rootless per-user ones) are additionally masked with `/dev/null` where present, since a container
+daemon reached through one would mutate host paths on the caller's behalf and defeat the read-only
+root. Precisely stated: the sandbox blocks **filesystem mutation** through the normal filesystem —
+the worst vector — but does **not** block `System(...)`/`Pipe(...)` shell-out per se and does
+**not** block network egress. The socket masking is best-effort defence in depth, not a complete
+boundary: because IPC/network isn't blocked, a privileged daemon socket at a path we don't know to
+mask remains reachable. Treat the sandbox as preventing casual and accidental filesystem writes
+by generated code, not as a hardened boundary against code actively trying to escape. The network namespace must stay shared because Magma's license check reads the
+host MAC address (an unshared network namespace makes licensing fail); a shell can therefore
+still be spawned, but it runs against the same read-only filesystem. The parse-only diagnostics
+passes execute nothing user-level and are not sandboxed, which keeps the every-edit syntax check
+at its measured ~12.5 ms.
+
+Policy: **on automatically** when `bwrap` is present and working — a one-time probe detects hosts
+where bwrap exists but cannot create namespaces (unprivileged user namespaces disabled, common
+inside containers) and falls back rather than failing every run. Set `MAGMA_LSP_NO_SANDBOX=1` in
+the server's environment to opt out; without (working) bwrap — e.g. macOS, untested anyway —
+execution passes run unsandboxed and a loud one-time warning on stderr says so. Programs that legitimately write output
+files can be granted specific directories with `MAGMA_LSP_SANDBOX_WRITABLE=/path/a:/path/b`
+(bind-mounted read-write; unset by default). `magma_guide()` reports the live sandbox state, and
+the `magma_run`/`magma_check` tool docs tell the agent up front that writes will fail.
 
 ## Develop
 

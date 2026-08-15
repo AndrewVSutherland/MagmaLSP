@@ -84,6 +84,60 @@ allocator escapes vsize); for a hard OS bound use a cgroup (`systemd-run --scope
 
 **Reproducibility**: `magma -b -S <seed> …` seeds the PRNG deterministically (verified).
 
+### 3b. OS execution sandbox (bubblewrap) — verified 2026-08-13, bwrap 0.11.0
+
+Execution passes (`magma_run`, `magma_check(execute=True)`, eval scoring — NOT the parse-only
+syntax strategies) run under bwrap when present (`magma/runner.py:_sandbox_argv`, policy
+`sandbox_state()`: active/disabled/unavailable/**broken** — a cached one-shot probe catches
+hosts where bwrap exists but user namespaces are disabled (common in containers) and falls back
+to unsandboxed-with-a-warning; opt-out `MAGMA_LSP_NO_SANDBOX=1`, writable escape hatch
+`MAGMA_LSP_SANDBOX_WRITABLE=dir:dir`). Verified facts that constrain the recipe:
+
+- Working shape (tested end-to-end: licensed run OK, `System("touch …")` write FAILS):
+  `timeout N bwrap --ro-bind / / --dev /dev --proc /proc --tmpfs /tmp [--ro-bind cwd cwd]
+  --ro-bind <src.m> <src.m> --unshare-pid --unshare-ipc --new-session --die-with-parent
+  [--chdir cwd] magma -b -n <src.m>`. `timeout` stays OUTSIDE bwrap (wall clock kills the
+  whole tree; `--die-with-parent` + the PID namespace handle the inner side).
+- ⚠️ **`--unshare-net` BREAKS Magma licensing**: the license check reads the host MAC address
+  and fails with "This host has the following MAC address(es): <empty>". Never add it. Beware
+  `magma -V` SKIPS the license check — a `-V` probe under `--unshare-net` misleadingly
+  succeeds; test with a real program.
+- Therefore the sandbox blocks filesystem *mutation* but NOT shell-out or network egress —
+  the README/docstrings say exactly that; don't overclaim. Best-effort defence in depth:
+  well-known privileged daemon sockets (docker/podman/containerd/crio/libvirt, incl. rootless
+  per-user) are `/dev/null`-overmounted where present (`_socket_masks`, verified connect()
+  then fails), since a reachable container daemon would mutate host paths and defeat the RO
+  root — but a privileged socket at a path we don't enumerate is still reachable (IPC/network
+  aren't blocked). The honest posture is "prevents casual/accidental writes", not "hardened
+  against active escape" (codex PR #14 round 6; going further = allowlisted-root view, a
+  design decision for the owner).
+- The `--ro-bind / /` read-only IS recursive over inherited submounts (verified empirically:
+  inside the sandbox, writes to `/run/user/1000` — a separate user-writable tmpfs — plus
+  `/run` and `/var/tmp` all fail on bwrap 0.11.0/kernel 7.x; bubblewrap uses
+  `mount_setattr(AT_RECURSIVE)` on kernels ≥ 5.12). Do not confuse this with the
+  `--remount-ro` option, whose `--help` line says "does not recursively remount" — that
+  caveat is about `--remount-ro`, not `--ro-bind` (a codex review conflated them, PR #14
+  round 3). `test_separate_writable_submounts_are_read_only` re-verifies on each host.
+- The temp `.m` is written to `tempfile.gettempdir()` (often under `/tmp`) and `--ro-bind`-ed
+  back over the `--tmpfs /tmp`, which recreates the path inside the tmpfs — keep that shape.
+- Mount ORDER matters (later shadows earlier): ro root → **/dev and /proc FIRST among the
+  overmounts** (with `TMPDIR=/dev/shm` the temp source lives under /dev; a later `--dev`
+  would hide it — every run fails "Can't open file" with rc 0, caught by codex on PR #14) →
+  tmpfs /tmp → Magma exe file/dir if masked → user writable binds → source file ro → daemon
+  socket masks LAST. **The caller's cwd is NEVER re-bound** (only `--chdir`ed into when
+  visible): reproducing it with a bind repeatedly re-exposed masked mounts (codex PR #14
+  rounds 3/6/7/8/10 — `/`, `/proc`, host `/tmp`, docker sockets), and relative `load`s
+  already resolve through the read-only root for every non-masked directory. No bind ever
+  replaces a masked root wholesale (the exe path binds just the *file* when it sits directly
+  at /tmp or /dev). **By design** (drop-cwd-rebind, owner decision 2026-08-14): a source
+  anywhere under a masked root (`filename="/tmp/proj/main.m"`) cannot `load` a dependency that
+  is ALSO under a masked root — the mask hides it, relative OR absolute (only the generated
+  source file is bound back), and cwd is not rebound. Workaround: keep source + deps at a
+  non-masked path, or grant their directory via `MAGMA_LSP_SANDBOX_WRITABLE` (also
+  chdir-visible). An absolute `load` of a file that already lives OUTSIDE the masked roots
+  works from a /tmp source (verified); "use an absolute path" alone does NOT help when the
+  dependency is itself under /tmp (codex PR #14).
+
 ---
 
 ## 4. Signature data sources (the heart of the DB)

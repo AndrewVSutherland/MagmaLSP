@@ -17,7 +17,9 @@ PREAMBLE = "SetColumns(0);\n"
 
 
 def score_program(code: str, expected: str, *, timeout: float = 60.0, strict: bool = False) -> dict:
-    res = run_source(PREAMBLE + code + "\n", timeout=timeout)
+    # sandbox: scoring executes model-generated code (the task spec forbids file access,
+    # so the read-only filesystem cannot change a legitimate program's verdict)
+    res = run_source(PREAMBLE + code + "\n", timeout=timeout, sandbox=True)
     out = res.stdout.strip()
     diags = parse_diagnostics(res.stdout)
     errored = bool(diags) or res.timed_out

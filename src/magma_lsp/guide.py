@@ -69,6 +69,38 @@ GUIDE = """\
    formula on a small group whose answer you know) before trusting the output.
 """
 
+# Appended to the guide so the agent knows up front whether file writes will fail — a
+# confused agent burning iterations on failed writes is a real failure mode.
+_SANDBOX_NOTES = {
+    "active": (
+        "ACTIVE — code passed to magma_run / magma_check(execute) runs with the filesystem\n"
+        "READ-ONLY (bubblewrap): file writes fail, even in the program's own directory, and\n"
+        "/tmp is a throwaway tmpfs. PRINT results instead of writing files. `load`s work when\n"
+        "the target is at a normal path; a source under /tmp or /dev cannot load a dependency\n"
+        "that is also under a masked root (the tmpfs/devfs hides it, relative OR absolute) —\n"
+        "keep source and deps at a normal path, or grant the dir via MAGMA_LSP_SANDBOX_WRITABLE.\n"
+        "Shell-out and network are NOT blocked (Magma\n"
+        "licensing constraint; well-known container-daemon sockets are masked best-effort).\n"
+        "The server admin can grant writable directories via MAGMA_LSP_SANDBOX_WRITABLE or\n"
+        "disable the sandbox via MAGMA_LSP_NO_SANDBOX=1."
+    ),
+    "disabled": (
+        "DISABLED (MAGMA_LSP_NO_SANDBOX is set) — executed code runs with the caller's full\n"
+        "filesystem access; file writes succeed."
+    ),
+    "unavailable": (
+        "UNAVAILABLE (no `bwrap` on PATH) — executed code runs with the caller's full\n"
+        "filesystem access; install bubblewrap to enable the read-only sandbox."
+    ),
+    "broken": (
+        "BROKEN (bwrap is installed but cannot create a sandbox here — user namespaces\n"
+        "disabled?) — executed code runs with the caller's full filesystem access."
+    ),
+}
+
 
 def guide() -> str:
-    return GUIDE
+    from .magma.runner import sandbox_state
+
+    state = sandbox_state()
+    return GUIDE + f"\n## Execution sandbox (this session)\n{_SANDBOX_NOTES[state]}\n"
