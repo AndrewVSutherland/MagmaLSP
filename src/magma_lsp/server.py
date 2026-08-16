@@ -43,8 +43,15 @@ from .magma.diagnostics import MagmaDiagnostic
 from .magma.runner import find_magma
 from .magma.validate import syntax_check
 from .parsing import new_parser
+from .positions import byte_col_to_point, point_col_to_byte
 
 logger = logging.getLogger("magma_lsp")
+
+# Coordinate convention (see positions.py): every function in this module below the LSP
+# boundary works in CODE POINTS. Incoming client positions are decoded with the document's
+# PositionCodec first; outgoing ranges are encoded with it last; tree-sitter byte columns are
+# mapped through byte_col_to_point on the way in. On pure-ASCII lines all three units agree,
+# which is why this only shows up with non-ASCII source (é, 😀, blackboard-bold letters...).
 
 WORD_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _IDENT_IN_MSG_RE = re.compile(r"Identifier '([A-Za-z_][A-Za-z0-9_]*)'")
@@ -167,6 +174,7 @@ server = MagmaLanguageServer()
 # helpers
 # --------------------------------------------------------------------------------------------
 def _word_at(text: str, pos: t.Position) -> str | None:
+    """``pos.character`` is a CODE-POINT index (decode client positions first)."""
     lines = text.splitlines()
     if pos.line >= len(lines):
         return None
@@ -178,6 +186,7 @@ def _word_at(text: str, pos: t.Position) -> str | None:
 
 
 def _prefix_at(text: str, pos: t.Position) -> str:
+    """``pos.character`` is a CODE-POINT index (decode client positions first)."""
     lines = text.splitlines()
     if pos.line >= len(lines):
         return ""
@@ -186,10 +195,18 @@ def _prefix_at(text: str, pos: t.Position) -> str:
     return m.group(0) if m else ""
 
 
+def _ts_point(text: str, pos: t.Position) -> tuple[int, int]:
+    """A tree-sitter point (row, BYTE column) for a code-point position."""
+    lines = text.splitlines()
+    line = lines[pos.line] if 0 <= pos.line < len(lines) else ""
+    return (pos.line, point_col_to_byte(line, pos.character))
+
+
 def _enclosing_call(text: str, pos: t.Position):
-    """The innermost ``call`` node containing the cursor, via tree-sitter."""
+    """The innermost ``call`` node containing the cursor, via tree-sitter.
+    ``pos`` is in code points; tree-sitter points want byte columns."""
     tree = new_parser().parse(text.encode("utf-8"))
-    point = (pos.line, pos.character)
+    point = _ts_point(text, pos)
     node = tree.root_node.descendant_for_point_range(point, point)
     while node is not None:
         if node.type == "call":
@@ -299,6 +316,14 @@ def _publish(ls: MagmaLanguageServer, uri: str, *, run_magma: bool) -> None:
             return  # superseded: a newer didChange will publish fresher results
     except Exception:
         return
+    # Encode ranges into the client's negotiated position units (UTF-16 by default) as the
+    # last step before the wire; everything upstream works in code points.
+    try:
+        codec, doc_lines = doc.position_codec, doc.lines
+        for d in diagnostics:
+            d.range = codec.range_to_client_units(doc_lines, d.range)
+    except Exception as exc:
+        logger.warning("position encoding of diagnostics failed: %s", exc)
     ls.text_document_publish_diagnostics(
         t.PublishDiagnosticsParams(uri=uri, diagnostics=diagnostics, version=version)
     )
@@ -308,6 +333,7 @@ def _compute_diagnostics(
     ls: MagmaLanguageServer, text: str, *, run_magma: bool, base_dir: str | None = None
 ) -> list[t.Diagnostic]:
     diags: list[t.Diagnostic] = []
+    text_lines = text.splitlines()  # for byte->code-point conversion of tree-sitter columns
 
     # names defined by load-ed files count as known; unresolved loads disable name checking
     loaded_names: set[str] = set()
@@ -323,7 +349,7 @@ def _compute_diagnostics(
         # the save/open path where the Magma pass emits its equivalent.
         known = ls.intrinsic_names | loaded_names
         for lint in undefined_intrinsics(text, known, suggest=ls.suggest):
-            d = _lint_diagnostic(lint)
+            d = _lint_diagnostic(lint, text_lines)
             m = re.match(r"'([^']+)'", lint.message)
             name = m.group(1) if m else None
             if name and name in ls.workspace_symbols:
@@ -339,7 +365,7 @@ def _compute_diagnostics(
         for lint in pitfall_lints(
             text, intrinsic_names=ls.intrinsic_names, ref_arg_intrinsics=ls.ref_arg_names
         ):
-            diags.append(_lint_diagnostic(lint))
+            diags.append(_lint_diagnostic(lint, text_lines))
         if ls.index is not None and not loads_unresolved:
             # (unresolved load -> the target could redefine any intrinsic with any arity,
             # so the pass is skipped entirely — same guard as the undefined-name pass)
@@ -348,7 +374,7 @@ def _compute_diagnostics(
                 nm = m.group(1) if m else None
                 if nm and nm in loaded_names:
                     continue  # a load-ed file redefines the name: proven reachable
-                d = _lint_diagnostic(lint)
+                d = _lint_diagnostic(lint, text_lines)
                 if nm and nm in ls.workspace_symbols:
                     # unproven reachability: keep the warning, acknowledge the sibling
                     d.message += (
@@ -357,7 +383,7 @@ def _compute_diagnostics(
                     )
                 diags.append(d)
         for lint in unused_variables(text):
-            diags.append(_lint_diagnostic(lint))
+            diags.append(_lint_diagnostic(lint, text_lines))
 
     # ---- Magma pass on open/save: authoritative for syntax ----
     use_magma = run_magma and ls.enable_magma_diagnostics and ls.magma_available
@@ -452,11 +478,18 @@ def _positionless_warning(message: str) -> t.Diagnostic:
     )
 
 
-def _lint_diagnostic(lint) -> t.Diagnostic:
+def _point_pos(lines: list[str], row: int, byte_col: int) -> t.Position:
+    """A code-point Position from a tree-sitter (row, byte-column) point."""
+    line = lines[row] if 0 <= row < len(lines) else ""
+    return t.Position(row, byte_col_to_point(line, byte_col))
+
+
+def _lint_diagnostic(lint, lines: list[str]) -> t.Diagnostic:
+    # Lint columns come from tree-sitter, i.e. UTF-8 byte offsets — convert to code points.
     return t.Diagnostic(
         range=t.Range(
-            start=t.Position(lint.line, lint.col),
-            end=t.Position(lint.end_line, lint.end_col),
+            start=_point_pos(lines, lint.line, lint.col),
+            end=_point_pos(lines, lint.end_line, lint.end_col),
         ),
         message=lint.message,
         severity=t.DiagnosticSeverity.Warning
@@ -471,18 +504,19 @@ def _tree_sitter_syntax_errors(text: str) -> list[t.Diagnostic]:
     tree = new_parser().parse(text.encode("utf-8"))
     if not tree.root_node.has_error:
         return []
+    lines = text.splitlines()
     out: list[t.Diagnostic] = []
     stack = [tree.root_node]
     while stack and len(out) < 50:
         node = stack.pop()
         if node.type == "ERROR" or node.is_missing:
-            sr, sc = node.start_point
-            er, ec = node.end_point
-            if (er, ec) == (sr, sc):
-                ec = sc + 1
+            start = _point_pos(lines, *node.start_point)
+            end = _point_pos(lines, *node.end_point)
+            if end == start:
+                end = t.Position(end.line, end.character + 1)
             out.append(
                 t.Diagnostic(
-                    range=t.Range(t.Position(sr, sc), t.Position(er, ec)),
+                    range=t.Range(start, end),
                     message=f"Missing '{node.type}'" if node.is_missing else "Syntax error",
                     severity=t.DiagnosticSeverity.Error,
                     source="magma-lsp",
@@ -500,8 +534,9 @@ def _tree_sitter_syntax_errors(text: str) -> list[t.Diagnostic]:
 def hover(ls: MagmaLanguageServer, params: t.HoverParams) -> t.Hover | None:
     if ls.index is None:
         return None
-    text = ls.workspace.get_text_document(params.text_document.uri).source
-    word = _word_at(text, params.position)
+    doc = ls.workspace.get_text_document(params.text_document.uri)
+    text = doc.source
+    word = _word_at(text, doc.position_from_client_units(params.position))
     if not word:
         return None
     md = ls.index.hover_markdown(word)
@@ -518,8 +553,9 @@ def hover(ls: MagmaLanguageServer, params: t.HoverParams) -> t.Hover | None:
 def completion(ls: MagmaLanguageServer, params: t.CompletionParams) -> t.CompletionList:
     if ls.index is None:
         return t.CompletionList(is_incomplete=False, items=[])
-    text = ls.workspace.get_text_document(params.text_document.uri).source
-    prefix = _prefix_at(text, params.position)
+    doc = ls.workspace.get_text_document(params.text_document.uri)
+    text = doc.source
+    prefix = _prefix_at(text, doc.position_from_client_units(params.position))
     items: list[t.CompletionItem] = []
     for name in ls.index.complete(prefix):
         intr = ls.index.lookup(name)
@@ -547,8 +583,10 @@ def signature_help(
 ) -> t.SignatureHelp | None:
     if ls.index is None:
         return None
-    text = ls.workspace.get_text_document(params.text_document.uri).source
-    call = _enclosing_call(text, params.position)
+    doc = ls.workspace.get_text_document(params.text_document.uri)
+    text = doc.source
+    pos = doc.position_from_client_units(params.position)
+    call = _enclosing_call(text, pos)
     if call is None or not call.children or call.children[0].type != "identifier":
         return None
     name = call.children[0].text.decode("utf-8", "replace")
@@ -563,7 +601,7 @@ def signature_help(
         for a in c.children
     )
     active_sig, active_param = _select_signature(
-        shown, _active_parameter(call, params.position), has_args=has_args
+        shown, _active_parameter(call, pos, text), has_args=has_args
     )
     infos = [
         t.SignatureInformation(
@@ -601,20 +639,21 @@ def _select_signature(sigs, n_commas: int, *, has_args: bool = True) -> tuple[in
     return idx, min(n_commas, len(sigs[idx].args) - 1)
 
 
-def _active_parameter(call_node, pos: t.Position) -> int:
+def _active_parameter(call_node, pos: t.Position, text: str) -> int:
     """Number of top-level ',' tokens in the POSITIONAL part of the argument list before the
     cursor — commas after the ``:`` separate optional ``P := v`` arguments, which are not in
-    the signature's parameter list and must not advance the index."""
+    the signature's parameter list and must not advance the index.
+
+    Comma positions are tree-sitter points (byte columns); the cursor is converted to the
+    same byte space so the comparison is exact on non-ASCII lines."""
+    cur = _ts_point(text, pos)
     n = 0
     for c in call_node.children:
         if c.type == "argument_list":
             for a in c.children:
                 if a.type == ":":
                     return n
-                if a.type == "," and (
-                    a.start_point[0] < pos.line
-                    or (a.start_point[0] == pos.line and a.start_point[1] < pos.character)
-                ):
+                if a.type == "," and (a.start_point[0], a.start_point[1]) < cur:
                     n += 1
     return n
 
@@ -623,13 +662,15 @@ def _active_parameter(call_node, pos: t.Position) -> int:
 def definition(ls: MagmaLanguageServer, params: t.DefinitionParams) -> t.Location | None:
     if ls.index is None:
         return None
-    text = ls.workspace.get_text_document(params.text_document.uri).source
-    word = _word_at(text, params.position)
+    doc = ls.workspace.get_text_document(params.text_document.uri)
+    word = _word_at(doc.source, doc.position_from_client_units(params.position))
     if not word:
         return None
     loc = ls.index.definition(word)
     if loc is None or not loc.file:
         return None
+    # Target positions live in a package file we don't have open; its `intrinsic Name(`
+    # header prefix is ASCII, so code-point columns equal client units here.
     line0 = max(0, loc.line - 1)
     col0 = max(0, loc.col - 1)
     return t.Location(
@@ -650,10 +691,16 @@ _SYMBOL_KIND = {
 def document_symbol(
     ls: MagmaLanguageServer, params: t.DocumentSymbolParams
 ) -> list[t.DocumentSymbol]:
-    text = ls.workspace.get_text_document(params.text_document.uri).source
+    doc = ls.workspace.get_text_document(params.text_document.uri)
+    text = doc.source
+    lines = text.splitlines()
+    codec = doc.position_codec
     out: list[t.DocumentSymbol] = []
     for s in document_symbols(text):
-        out.append(_to_document_symbol(s))
+        sym = _to_document_symbol(s, lines)
+        sym.range = codec.range_to_client_units(doc.lines, sym.range)
+        sym.selection_range = codec.range_to_client_units(doc.lines, sym.selection_range)
+        out.append(sym)
     return out
 
 
@@ -665,6 +712,8 @@ def workspace_symbol(
         return []
     out: list[t.WorkspaceSymbol] = []
     for name, loc in ls.index.search_symbols(params.query):
+        # Package-file locations: the `intrinsic Name(` header prefix is ASCII, so
+        # code-point columns equal client units (see the same note in `definition`).
         line0 = max(0, loc.line - 1)
         col0 = max(0, loc.col - 1)
         out.append(
@@ -680,10 +729,15 @@ def workspace_symbol(
     return out
 
 
-def _to_document_symbol(s: Symbol) -> t.DocumentSymbol:
-    rng = t.Range(t.Position(s.line, s.col), t.Position(s.end_line, s.end_col))
+def _to_document_symbol(s: Symbol, lines: list[str]) -> t.DocumentSymbol:
+    # Symbol positions are tree-sitter points (byte columns) — convert to code points; the
+    # caller then encodes to client units.
+    rng = t.Range(_point_pos(lines, s.line, s.col), _point_pos(lines, s.end_line, s.end_col))
     nl, nc = s.name_pos()
-    name_rng = t.Range(t.Position(nl, nc), t.Position(nl, nc + len(s.name)))
+    name_start = _point_pos(lines, nl, nc)
+    name_rng = t.Range(
+        name_start, t.Position(name_start.line, name_start.character + len(s.name))
+    )
     return t.DocumentSymbol(
         name=s.name,
         kind=_SYMBOL_KIND.get(s.kind, t.SymbolKind.Variable),

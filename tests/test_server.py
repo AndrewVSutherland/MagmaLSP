@@ -95,7 +95,7 @@ def test_active_parameter_stops_at_optional_colon():
         stack.extend(n.children)
     assert call is not None
     # cursor at the very end of the argument list: only positional commas (none) count
-    assert srv._active_parameter(call, t.Position(0, 35)) == 0
+    assert srv._active_parameter(call, t.Position(0, 35), text) == 0
 
 
 def test_invalidate_scanned_file_beats_stat_blind_edit(tmp_path):

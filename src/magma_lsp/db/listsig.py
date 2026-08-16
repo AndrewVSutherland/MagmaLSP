@@ -131,10 +131,25 @@ def parse_enum_output(stdout: str) -> list[Signature]:
 def enumerate_signatures(
     *, magma_path: str | None = None, timeout: float = 120.0
 ) -> list[Signature]:
-    """Run the two-phase enumeration and return parsed kernel-tagged signatures."""
+    """Run the two-phase enumeration and return parsed kernel-tagged signatures.
+
+    Raises ``RuntimeError`` when either Magma run timed out or exited nonzero: this
+    enumeration is *authoritative* for the kernel half of the DB, and accepting whatever
+    partial output arrived before a timeout would save a silently truncated DB that looks
+    complete. Callers degrade to a package-only DB instead.
+    """
     cat_res = run_source("ListCategories();\n", magma_path=magma_path, timeout=60.0)
+    if cat_res.timed_out or cat_res.returncode != 0:
+        why = "timed out" if cat_res.timed_out else f"exited {cat_res.returncode}"
+        raise RuntimeError(f"ListCategories() run {why}")
     cats = parse_categories(cat_res.stdout)
     if not cats:
         raise RuntimeError("ListCategories() produced no category names")
     enum_res = run_source(build_enum_script(cats), magma_path=magma_path, timeout=timeout)
+    if enum_res.timed_out or enum_res.returncode != 0:
+        why = "timed out" if enum_res.timed_out else f"exited {enum_res.returncode}"
+        raise RuntimeError(
+            f"ListSignatures enumeration {why}; refusing the partial output "
+            "(raise --enum-timeout to allow it to finish)"
+        )
     return parse_enum_output(enum_res.stdout)
