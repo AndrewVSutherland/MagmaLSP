@@ -27,8 +27,8 @@ def test_unchanged_files_are_served_from_cache(tmp_path):
     # Poison the cached names while keeping the mtime: a rescan must use the cache entry
     # (proving the file was not re-read or re-parsed).
     key = os.path.normpath(str(tmp_path / "a.m"))
-    mtime, _names = cache[key]
-    cache[key] = (mtime, frozenset({"Injected"}))
+    mtime, _names, _defs = cache[key]
+    cache[key] = (mtime, frozenset({"Injected"}), ())
     scan = scan_workspace([str(tmp_path)], cache=cache)
     assert "Injected" in scan.names
     assert "Alpha" not in scan.names

@@ -203,13 +203,32 @@ class SignatureIndex:
         return out
 
     def definition(self, name: str) -> SourceLocation | None:
+        locs = self.definitions(name)
+        return locs[0] if locs else None
+
+    def definitions(self, name: str) -> list[SourceLocation]:
+        """ALL distinct definition sites of ``name``'s overloads (documented package
+        signatures first, then the rest), deduped by (file, line).
+
+        Magma is dynamically typed and the index does no type inference, so it cannot know
+        WHICH overload a call resolves to — go-to-definition therefore returns every site
+        and lets the editor present the list (issue #16).
+        """
         intr = self.db.get(name)
         if not intr:
-            return None
-        for s in intr.signatures:
-            if s.source is not None:
-                return s.source
-        return None
+            return []
+        seen: set[tuple[str, int]] = set()
+        out: list[SourceLocation] = []
+        for s in _doc_order(intr.signatures):
+            loc = s.source
+            if loc is None or not loc.file:
+                continue
+            key = (loc.file, loc.line)
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(loc)
+        return out
 
     def hover_markdown(self, name: str, *, max_sigs: int = 20) -> str | None:
         intr = self.db.get(name)

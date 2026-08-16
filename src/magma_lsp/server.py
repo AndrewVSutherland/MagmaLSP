@@ -33,7 +33,7 @@ from .analysis.pitfalls import pitfall_lints
 from .analysis.scope import load_defined_symbols
 from .analysis.symbols import Symbol, document_symbols
 from .analysis.undefined import undefined_intrinsics
-from .analysis.workspace import ScanCache, scan_workspace
+from .analysis.workspace import ScanCache, WorkspaceDef, scan_workspace
 from .db.index import SignatureIndex
 from .db.model import Signature
 from .db.store import best_cached_db
@@ -69,11 +69,13 @@ class MagmaLanguageServer(LanguageServer):
         self.magma_timeout: float = 10.0
         self.intrinsic_names: frozenset[str] = frozenset()
         self.ref_arg_names: frozenset[str] = frozenset()
-        # Names defined across the project's own .m files (sibling helpers); see analysis/workspace.
+        # Names + definition sites across the project's own .m files (sibling helpers and
+        # spec-listed files); see analysis/workspace.
         self.enable_workspace_symbols: bool = True
         self.workspace_max_files: int = 2000
         self.workspace_roots: list[str] = []
         self.workspace_symbols: frozenset[str] = frozenset()
+        self.workspace_defs: dict[str, tuple[WorkspaceDef, ...]] = {}
         self._scan_cache: ScanCache = {}
         self.enable_handbook: bool = True
         self.handbook: HandbookIndex | None = None
@@ -123,7 +125,9 @@ class MagmaLanguageServer(LanguageServer):
             )
 
     def rescan_workspace(self) -> None:
-        if not (self.enable_workspace_symbols and self.enable_unknown_intrinsics):
+        # The scan feeds navigation (definition/workspace-symbol/completion) as well as the
+        # unknown-intrinsic suppression, so it is gated only on enable_workspace_symbols.
+        if not self.enable_workspace_symbols:
             return
         roots = list(self.workspace_roots)
         if not roots:
@@ -141,6 +145,7 @@ class MagmaLanguageServer(LanguageServer):
             )
         else:
             self.workspace_symbols = scan.names
+            self.workspace_defs = scan.defs or {}
             logger.info(
                 "workspace scan: %d names from %d files", len(scan.names), scan.files_scanned
             )
@@ -551,27 +556,49 @@ def hover(ls: MagmaLanguageServer, params: t.HoverParams) -> t.Hover | None:
 
 @server.feature(t.TEXT_DOCUMENT_COMPLETION)
 def completion(ls: MagmaLanguageServer, params: t.CompletionParams) -> t.CompletionList:
-    if ls.index is None:
-        return t.CompletionList(is_incomplete=False, items=[])
     doc = ls.workspace.get_text_document(params.text_document.uri)
     text = doc.source
     prefix = _prefix_at(text, doc.position_from_client_units(params.position))
     items: list[t.CompletionItem] = []
-    for name in ls.index.complete(prefix):
-        intr = ls.index.lookup(name)
-        detail = intr.signatures[0].render() if intr and intr.signatures else None
+    # The project's own definitions first — they also complete with no signature DB at all.
+    pl = prefix.lower()
+    for name in sorted(ls.workspace_defs):
+        if prefix and not name.lower().startswith(pl):
+            continue
+        wd = ls.workspace_defs[name][0]
         items.append(
             t.CompletionItem(
                 label=name,
                 kind=t.CompletionItemKind.Function,
-                detail=detail,
+                detail=f"{wd.kind} — {os.path.basename(wd.file)} (workspace)",
                 documentation=(
-                    t.MarkupContent(kind=t.MarkupKind.Markdown, value=intr.first_doc)
-                    if intr and intr.first_doc
+                    t.MarkupContent(kind=t.MarkupKind.Markdown, value=wd.detail)
+                    if wd.detail
                     else None
                 ),
             )
         )
+        if len(items) >= 100:
+            break
+    if ls.index is not None:
+        project_names = {i.label for i in items}
+        for name in ls.index.complete(prefix):
+            if name in project_names:
+                continue  # the workspace item already covers it (and names its file)
+            intr = ls.index.lookup(name)
+            detail = intr.signatures[0].render() if intr and intr.signatures else None
+            items.append(
+                t.CompletionItem(
+                    label=name,
+                    kind=t.CompletionItemKind.Function,
+                    detail=detail,
+                    documentation=(
+                        t.MarkupContent(kind=t.MarkupKind.Markdown, value=intr.first_doc)
+                        if intr and intr.first_doc
+                        else None
+                    ),
+                )
+            )
     return t.CompletionList(is_incomplete=len(items) >= 200, items=items)
 
 
@@ -658,25 +685,49 @@ def _active_parameter(call_node, pos: t.Position, text: str) -> int:
     return n
 
 
+_MAX_DEFINITIONS = 50  # operators have 500+ overloads; a definition list that long helps nobody
+
+
 @server.feature(t.TEXT_DOCUMENT_DEFINITION)
-def definition(ls: MagmaLanguageServer, params: t.DefinitionParams) -> t.Location | None:
-    if ls.index is None:
-        return None
+def definition(ls: MagmaLanguageServer, params: t.DefinitionParams) -> list[t.Location] | None:
+    """All definition sites for the name under the cursor: the project's own definitions
+    first (the user's code is the more likely target), then every package-DB overload
+    (documented ones first). Magma is dynamically typed and the server does no type
+    inference, so it cannot pick THE overload for the call's argument types — returning the
+    list lets the editor show a picker instead of silently jumping to an arbitrary one
+    (issue #16)."""
     doc = ls.workspace.get_text_document(params.text_document.uri)
     word = _word_at(doc.source, doc.position_from_client_units(params.position))
     if not word:
         return None
-    loc = ls.index.definition(word)
-    if loc is None or not loc.file:
-        return None
-    # Target positions live in a package file we don't have open; its `intrinsic Name(`
-    # header prefix is ASCII, so code-point columns equal client units here.
-    line0 = max(0, loc.line - 1)
-    col0 = max(0, loc.col - 1)
-    return t.Location(
-        uri=from_fs_path(loc.file),
-        range=t.Range(t.Position(line0, col0), t.Position(line0, col0 + len(word))),
-    )
+    out: list[t.Location] = []
+    # Target positions below live in files we don't have open; both the workspace-scan
+    # coordinates and the package-extraction ones sit after an ASCII `intrinsic Name(` /
+    # `function Name(` header prefix, so their columns need no unit conversion.
+    for wd in ls.workspace_defs.get(word, ()):
+        out.append(
+            t.Location(
+                uri=from_fs_path(wd.file),
+                range=t.Range(
+                    t.Position(wd.line, wd.col), t.Position(wd.line, wd.col + len(word))
+                ),
+            )
+        )
+    if ls.index is not None:
+        for loc in ls.index.definitions(word):
+            if not loc.file:
+                continue
+            line0 = max(0, loc.line - 1)
+            col0 = max(0, loc.col - 1)
+            out.append(
+                t.Location(
+                    uri=from_fs_path(loc.file),
+                    range=t.Range(t.Position(line0, col0), t.Position(line0, col0 + len(word))),
+                )
+            )
+            if len(out) >= _MAX_DEFINITIONS:
+                break
+    return out or None
 
 
 _SYMBOL_KIND = {
@@ -708,24 +759,45 @@ def document_symbol(
 def workspace_symbol(
     ls: MagmaLanguageServer, params: t.WorkspaceSymbolParams
 ) -> list[t.WorkspaceSymbol]:
-    if ls.index is None:
-        return []
+    """Project-defined symbols first (intrinsics/functions the user wrote), then matching
+    package intrinsics from the signature DB."""
+    q = params.query.lower()
     out: list[t.WorkspaceSymbol] = []
-    for name, loc in ls.index.search_symbols(params.query):
-        # Package-file locations: the `intrinsic Name(` header prefix is ASCII, so
-        # code-point columns equal client units (see the same note in `definition`).
-        line0 = max(0, loc.line - 1)
-        col0 = max(0, loc.col - 1)
-        out.append(
-            t.WorkspaceSymbol(
-                name=name,
-                kind=t.SymbolKind.Function,
-                location=t.Location(
-                    uri=from_fs_path(loc.file),
-                    range=t.Range(t.Position(line0, col0), t.Position(line0, col0 + len(name))),
-                ),
+    for name in sorted(ls.workspace_defs):
+        if q and q not in name.lower():
+            continue
+        for wd in ls.workspace_defs[name]:
+            out.append(
+                t.WorkspaceSymbol(
+                    name=name,
+                    kind=_SYMBOL_KIND.get(wd.kind, t.SymbolKind.Function),
+                    location=t.Location(
+                        uri=from_fs_path(wd.file),
+                        range=t.Range(
+                            t.Position(wd.line, wd.col), t.Position(wd.line, wd.col + len(name))
+                        ),
+                    ),
+                    container_name=os.path.basename(wd.file),
+                )
             )
-        )
+    if ls.index is not None:
+        for name, loc in ls.index.search_symbols(params.query):
+            # Package-file locations: the `intrinsic Name(` header prefix is ASCII, so
+            # code-point columns equal client units (see the same note in `definition`).
+            line0 = max(0, loc.line - 1)
+            col0 = max(0, loc.col - 1)
+            out.append(
+                t.WorkspaceSymbol(
+                    name=name,
+                    kind=t.SymbolKind.Function,
+                    location=t.Location(
+                        uri=from_fs_path(loc.file),
+                        range=t.Range(
+                            t.Position(line0, col0), t.Position(line0, col0 + len(name))
+                        ),
+                    ),
+                )
+            )
     return out
 
 

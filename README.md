@@ -1,84 +1,119 @@
 # MagmaLSP
 
-[![CI](https://github.com/AndrewVSutherland2/MagmaLSP/actions/workflows/ci.yml/badge.svg)](https://github.com/AndrewVSutherland2/MagmaLSP/actions/workflows/ci.yml)
+[![CI](https://github.com/AndrewVSutherland/MagmaLSP/actions/workflows/ci.yml/badge.svg)](https://github.com/AndrewVSutherland/MagmaLSP/actions/workflows/ci.yml)
 
-A language server and Claude Code plugin for the [Magma](http://magma.maths.usyd.edu.au/) computer
-algebra system. It gives an LLM (and human) accurate, version-current knowledge of Magma's
-intrinsics and a real error signal from Magma itself, so generated Magma is *reliable* and
-*idiomatic* rather than merely plausible.
+A language server and Claude Code plugin for the [Magma](http://magma.maths.usyd.edu.au/)
+computer algebra system.
 
-See [`design.md`](design.md) for the *why* and [`CLAUDE.md`](CLAUDE.md) for verified facts about
-Magma and the build environment.
+Magma ships ~10,000 intrinsics whose names, argument types, and return conventions are hard
+to remember (for people) and hard to guess (for LLMs). MagmaLSP builds a database of every
+intrinsic in *your* Magma installation and puts it behind two front-ends: an **LSP server**
+for editors (completion, hover, diagnostics as you type, go-to-definition) and an **MCP
+server** for coding agents (look up signatures, check and run Magma code, read real Magma
+errors). See [`design.md`](design.md) for the why and [`CLAUDE.md`](CLAUDE.md) for verified
+facts about Magma itself.
 
-## What it does
+## What you get
 
-- **Signature intelligence** from a database built per Magma version (CLAUDE.md §4):
-  - package `.m` files → arg names, optional parameters, doc strings, and source locations
-    (parsed with [`tree-sitter-magma`](https://github.com/edgarcosta/tree-sitter-magma));
-  - `ListSignatures` in a running Magma → completeness, including kernel intrinsics;
-  - a `name;` probe that recovers variadic intrinsics (`Sprintf`, `Explode`) *and* harvests doc
-    strings + optional-parameter names for kernel intrinsics `ListSignatures` leaves bare
-    (doc coverage ~96% of names).
-  - Powers **hover**, **completion**, **signature help**, **go-to-definition**, **workspace
-    symbols**, plus **keyword search** and **"did you mean" suggestions** (fuzzy + cross-system
-    aliases: `FactorInteger` → `Factorization`).
-  - **hover** is further enriched with the **handbook prose description** for the intrinsic, pulled from
-    the local HTML handbook (`doc/html`).
-- **Diagnostics** pushed to the editor after each edit:
-  - **Magma-backed** syntax/binding check (CLAUDE.md §5), strategy chosen per file shape:
-    plain scripts run parsed-but-not-executed in a never-called-function wrap; package files
-    (`intrinsic` declarations) are `Attach`ed; files that don't parse are reported from
-    tree-sitter without touching Magma (so unbalanced fragments can't corrupt the check);
-  - **static "unknown intrinsic"** check with **spelling suggestions** — flags a call whose target
-    is neither a known intrinsic nor defined/imported/forward-declared/`load`-ed in the project
-    (a cached workspace scan); reports *all* unknown names at once (Magma stops at the first);
-  - **static arity check** — a call with an argument count no overload accepts is flagged
-    before Magma ever runs (validated ≈0 false positives on the package corpus + handbook);
-  - **pitfall lints** for the mistakes LLMs actually make: `x = 5;` (vs `:=`), `==`/`**`,
-    method-call syntax (`L.append(3)`), `True`/`False`, `//` as division, discarded
-    `Append(L, x)` results, shadowing an intrinsic the file also calls;
-  - **unused-variable lints** (CLAUDE.md §13); tree-sitter syntax errors when Magma is off.
-- **Document symbols** (intrinsics, named + assigned functions/procedures, `func<...>` forms).
+**A signature database built from your install.** The build (`magma-lsp-build-db`, ~30 s)
+parses the package `.m` sources shipped with Magma (argument names, optional parameters, doc
+strings, source locations) and cross-checks a running Magma's own `ListSignatures`
+enumeration (which adds the kernel intrinsics that exist only in C). The result: every
+intrinsic your Magma actually registers, with its overloads and documentation, current for
+your exact version — nothing hard-coded, nothing shipped, no Magma content redistributed.
 
-Built on [`pygls`](https://github.com/openlawlibrary/pygls). The Magma grammar and an opinionated
-formatter come from the MIT-licensed [`tree-sitter-magma`](https://github.com/edgarcosta/tree-sitter-magma)
-and [`lava`](https://github.com/havarddj/lava) — we reuse rather than reinvent them.
+**In your editor** (any LSP-capable editor — see [Editor setup](#editor-setup)):
+
+- **Diagnostics after every edit**: real Magma parses your code on open/save (exact
+  syntax/binding errors with positions, without executing anything); between saves, fast
+  static checks flag *unknown intrinsics* (with "did you mean" suggestions), *calls whose
+  argument count no overload accepts*, common pitfalls (`=` vs `:=`, `==`, `L.append(x)`
+  method-call syntax, `True`/`False`, discarded in-place results), and unused variables.
+- **Completion, hover, and signature help** for all ~10k intrinsics: every overload, doc
+  strings, optional parameters, plus the handbook's prose description on hover.
+- **Go-to-definition** jumps into the package source that defines an intrinsic. Magma is
+  dynamically typed and the server does **no type inference**, so for an overloaded name like
+  `Dimension` it cannot know which overload your call resolves to — it returns *all*
+  definition sites (documented ones first) and your editor shows a picker. Kernel-only
+  intrinsics (defined in C, e.g. `Type`) have no `.m` source to jump to.
+- **Your project's code is first-class**: the server scans the workspace's `.m`/`.magma`
+  files — including files listed by any `*.spec` package spec it finds — so intrinsics and
+  functions you define in sibling files are recognized by the unknown-intrinsic check,
+  completable, listed in workspace-symbol search, and valid go-to-definition targets.
+
+**For a coding agent** (Claude Code or any MCP client): five stdio tools — `magma_guide`
+(a one-page conventions/pitfalls brief), `magma_search` (find the intrinsic when you only
+know the concept), `magma_lookup` (exact signatures + docs), `magma_check` (all the
+diagnostics above **plus an execution pass by default** — unlike the editor path, which
+never executes), and `magma_run` (sandboxed execution with errors mapped to your line
+numbers). Execution with real error text is the single biggest lever for getting LLM-written
+Magma correct; the DB is what catches the *silently wrong* conventions a clean run can't
+(details and measurements: [`eval/`](eval/)).
 
 ## Requirements
 
 - A **licensed [Magma](http://magma.maths.usyd.edu.au/) installation** (developed and tested
-  against V2.29-9). The signature DB is built from *your* install — nothing Magma-owned ships
-  with this repo. Without a runnable Magma everything degrades honestly rather than silently:
-  the server falls back to static-only diagnostics (tree-sitter syntax errors + the static
-  checks), `magma_check`/`magma_run` say so explicitly, and the DB build produces a package-only
-  DB (no kernel intrinsics) from the install's package tree.
+  against V2.29-9). Without a runnable Magma everything degrades honestly rather than
+  silently: static-only diagnostics, explicit notes from `magma_check`/`magma_run`, and a
+  package-only DB.
 - **Linux** (macOS is untested).
-- [`uv`](https://docs.astral.sh/uv/).
-- A **C compiler** and Python headers, to build the tree-sitter grammar (if the system Python
-  lacks `Python.h`, `uv python install 3.12` first — uv-managed Pythons bundle headers).
+- [`uv`](https://docs.astral.sh/uv/), and a **C compiler** + Python headers to build the
+  tree-sitter grammar (if the system Python lacks `Python.h`: `uv python install 3.12` —
+  uv-managed Pythons bundle headers).
 
-## Install & build
+## Install & build the database
 
 ```bash
-uv sync --extra dev                # create the venv, build tree-sitter-magma
-uv run magma-lsp-build-db          # build the signature DB (needs Magma on PATH); ~30 s
-# non-/opt install: also point it at your package tree, e.g.
-#   uv run magma-lsp-build-db --package-root /path/to/magma/package
+git clone https://github.com/AndrewVSutherland/MagmaLSP && cd MagmaLSP
+uv sync --extra dev                # create .venv, build tree-sitter-magma
+uv run magma-lsp-build-db          # build the signature DB (needs Magma); ~30 s
 ```
 
-`magma-lsp-build-db` reads Magma's **package tree** (the `.m` source library). It defaults to
-`/opt/magma/package` and exits if that directory is absent — so if your Magma lives elsewhere,
-having the binary on `PATH` is not enough: pass `--package-root <dir>` or set `MAGMA_PACKAGE_ROOT`
-to your install's `package/` directory (the kernel-intrinsic half of the build, which does use the
-`magma` binary, still finds it via `PATH`/`--magma-path`). It writes a per-version artifact to
-`~/.cache/magma-lsp/<version>.magmadb.json` (override with `--out` or `MAGMA_LSP_DB`). The loader
-prefers the artifact matching the installed Magma version and warns when it has to serve a stale
-one. Without Magma the build still produces a package-only DB (no kernel intrinsics) and prints a
-note.
+`magma-lsp-build-db` reads Magma's **package tree** (default `/opt/magma/package`; if your
+Magma lives elsewhere pass `--package-root <dir>` or set `MAGMA_PACKAGE_ROOT` — having
+`magma` on PATH is not enough by itself). It writes a per-version artifact to
+`~/.cache/magma-lsp/<version>.magmadb.json` (override: `--out` / `MAGMA_LSP_DB`); the server
+prefers the artifact matching the installed Magma and warns when serving a stale one.
+
+## Editor setup
+
+The language server binary is **`.venv/bin/magma-lsp`** inside your clone after `uv sync`
+(equivalently: `uv run --project /path/to/MagmaLSP magma-lsp`). It speaks stdio. Point any
+LSP client at it with filetype/language `magma`; examples:
+
+**Neovim ≥ 0.11** (built-in LSP config):
+
+```lua
+-- .m also belongs to MATLAB/Objective-C: keep the mapping if your repos are Magma-only,
+-- drop it (using .magma) if they're mixed.
+vim.filetype.add({ extension = { magma = "magma", m = "magma" } })
+
+vim.lsp.config("magma_lsp", {
+  cmd = { "/path/to/MagmaLSP/.venv/bin/magma-lsp" },
+  filetypes = { "magma" },
+  root_markers = { ".git" },
+})
+vim.lsp.enable("magma_lsp")
+```
+
+**Emacs** (eglot, with [magma-mode](https://github.com/ThibautVerron/magma-mode)):
+
+```elisp
+(add-to-list 'eglot-server-programs
+             '(magma-mode . ("/path/to/MagmaLSP/.venv/bin/magma-lsp")))
+```
+
+**VS Code** has no built-in generic LSP client; use Claude Code's plugin support (below) or
+a generic LSP-client extension.
+
+(These are reference configurations, not CI-tested; if you wire up another editor, a PR
+adding it here is welcome.)
 
 ## Use in Claude Code
 
-This repo *is* a Claude Code plugin. Add your clone as a local marketplace and install:
+This repo *is* a Claude Code plugin bundling both front-ends — the LSP server (via
+[`.lsp.json`](.lsp.json)) and the MCP tools (via [`.mcp.json`](.mcp.json), visible in `/mcp`
+as `magma-lsp`). Add your clone as a local marketplace and install:
 
 ```
 /plugin marketplace add /path/to/MagmaLSP
@@ -86,92 +121,61 @@ This repo *is* a Claude Code plugin. Add your clone as a local marketplace and i
 /reload-plugins
 ```
 
-The plugin maps both `.m` (Magma's usual file suffix — Magma itself uses `.m`) and `.magma` to
-languageId `magma`, and launches the server via `uv run`. (`.m` is shared with MATLAB and
-Objective-C; in a mixed repo, narrow the mapping or use `.magma` for the files you want treated as
-Magma.) Configure via `initializationOptions` in [`.lsp.json`](.lsp.json):
-`magmaPath`, `magmaDiagnostics` (bool), `lints` (bool), `magmaTimeout` (seconds), `dbPath`.
+The plugin maps both `.m` (Magma's usual suffix) and `.magma` to language `magma`; in a repo
+that mixes MATLAB/Objective-C `.m` files, narrow the mapping in `.lsp.json`. The same core
+is scriptable from a shell as [`magma-lsp-cli`](src/magma_lsp/cli.py)
+(`guide`/`search`/`lookup`/`check`/`run`).
 
-### Two front-ends, one core
+Note one deliberate asymmetry: the MCP `magma_check` **executes the code by default**
+(agents want runtime errors; pass `execute=False` for a parse-only check), while the editor
+diagnostics path and the CLI `check` never execute unless asked.
 
-The plugin bundles **two** ways into the same core intelligence (`src/magma_lsp/frontend.py`):
+## Execution sandbox
 
-- **LSP server** ([`.lsp.json`](.lsp.json)) — for the *editor*: pushes diagnostics on edit/save,
-  plus hover, completion, go-to-definition, document/workspace symbols.
-- **MCP server** ([`.mcp.json`](.mcp.json)) — for the *agent* writing Magma. Five stdio tools
-  (auto-started with the plugin, visible in `/mcp` as `magma-lsp`):
-  - `magma_guide()` — a one-page, Magma-verified conventions & pitfalls brief (read once);
-  - `magma_search(query)` — keyword search over names + docs, for when the agent only knows
-    the concept (the hardest small-model failure: not knowing the name at all);
-  - `magma_lookup(names)` — signatures + handbook docs; forgiving resolution (case,
-    operators) and ranked "did you mean" suggestions on misses;
-  - `magma_check(code, execute=True)` — static (names/arity/pitfalls) + Magma syntax/binding
-    diagnostics + an execution pass by default; degrades honestly (no DB / no Magma /
-    timeout are explicit notes, never a silent "OK");
-  - `magma_run(code, timeout=30)` — sandboxed execution with error locations remapped to the
-    program's own line numbers and head+tail output truncation.
+`magma_run` and `magma_check(execute=True)` run user code. Every run is a fresh, hermetic
+Magma process under a hard wall-clock timeout, a memory limit, and bounded output capture —
+and where [bubblewrap](https://github.com/containers/bubblewrap) is available (most Linux
+distros), the process additionally sees a **read-only filesystem**: file writes by executed
+code fail, with `/tmp` a throwaway tmpfs. Shell-out and network egress are deliberately
+*not* blocked (Magma's license check needs the host network identity), so treat this as
+protection against casual/accidental writes, not a hardened boundary. Opt out with
+`MAGMA_LSP_NO_SANDBOX=1`; grant specific writable directories with
+`MAGMA_LSP_SANDBOX_WRITABLE=/path/a:/path/b`. Full details, rationale, and `load`-path
+semantics: [`docs/sandbox.md`](docs/sandbox.md).
 
-  These give the agent the execution loop (`run`/`check`) plus the signature DB
-  (`search`/`lookup`) — the two levers our evals identified. For frontier models the DB is an
-  efficiency layer over execution; for smaller models it is a *capability* lever — Haiku 4.5 with
-  these tools plays at tooled-Sonnet level, and the DB's docs fix exactly the silent-wrong
-  convention failures raw execution can't see (see [`eval/FINDINGS_3arm.md`](eval/FINDINGS_3arm.md),
-  [`eval/FINDINGS_trap.md`](eval/FINDINGS_trap.md), [`eval/FINDINGS_haiku.md`](eval/FINDINGS_haiku.md)).
-  The CLI ([`magma-lsp-cli`](src/magma_lsp/cli.py)) exposes the same operations from a shell.
+## Configuration
 
-**Execution sandbox:** every `run`/`check` is a fresh, hermetic Magma process under a wall-clock
-`timeout` and an in-process `SetMemoryLimit`. In addition, the passes that actually *execute* user
-code (`magma_run`, `magma_check(execute=True)`, and the CLI equivalents) run inside a
-[bubblewrap](https://github.com/containers/bubblewrap) sandbox whenever `bwrap` is on PATH:
-the entire filesystem is remounted **read-only** (`/tmp` becomes a throwaway tmpfs), with fresh
-PID/IPC namespaces and no controlling terminal. Relative `load`s resolve through the read-only
-root, which exposes every directory except the masked ones — so a source at a normal path loads
-its siblings fine, while a source anywhere **under `/tmp` or `/dev`** cannot load a dependency
-that is *also* under a masked root: the throwaway tmpfs/devfs hides it whether it's referenced
-relatively or by absolute path (only the generated source file is bound back), and the sandbox
-deliberately never re-binds a caller-controlled directory over the masks. Keep the source and its
-`load` dependencies at a normal path, or grant their directory via `MAGMA_LSP_SANDBOX_WRITABLE`
-(an absolute `load` of a file that already lives outside the masked roots works from anywhere).
-The read-only remount is recursive: separately-mounted writable filesystems
-(a separate `/home`, the `/run/user/<uid>` tmpfs, …) are covered too — bubblewrap remounts
-inherited submounts read-only, using `mount_setattr` on kernels ≥ 5.12 — and the test suite
-asserts this against a real submount of the host it runs on. Well-known privileged control sockets (Docker, Podman, containerd, CRI-O, libvirt, incl. the
-rootless per-user ones) are additionally masked with `/dev/null` where present, since a container
-daemon reached through one would mutate host paths on the caller's behalf and defeat the read-only
-root. Precisely stated: the sandbox blocks **filesystem mutation** through the normal filesystem —
-the worst vector — but does **not** block `System(...)`/`Pipe(...)` shell-out per se and does
-**not** block network egress. The socket masking is best-effort defence in depth, not a complete
-boundary: because IPC/network isn't blocked, a privileged daemon socket at a path we don't know to
-mask remains reachable. Treat the sandbox as preventing casual and accidental filesystem writes
-by generated code, not as a hardened boundary against code actively trying to escape. The network namespace must stay shared because Magma's license check reads the
-host MAC address (an unshared network namespace makes licensing fail); a shell can therefore
-still be spawned, but it runs against the same read-only filesystem. The parse-only diagnostics
-passes execute nothing user-level and are not sandboxed, which keeps the every-edit syntax check
-at its measured ~12.5 ms.
+`initializationOptions` (in `.lsp.json` for Claude Code, or your editor's LSP settings):
 
-Policy: **on automatically** when `bwrap` is present and working — a one-time probe detects hosts
-where bwrap exists but cannot create namespaces (unprivileged user namespaces disabled, common
-inside containers) and falls back rather than failing every run. Set `MAGMA_LSP_NO_SANDBOX=1` in
-the server's environment to opt out; without (working) bwrap — e.g. macOS, untested anyway —
-execution passes run unsandboxed and a loud one-time warning on stderr says so. Programs that legitimately write output
-files can be granted specific directories with `MAGMA_LSP_SANDBOX_WRITABLE=/path/a:/path/b`
-(bind-mounted read-write; unset by default). `magma_guide()` reports the live sandbox state, and
-the `magma_run`/`magma_check` tool docs tell the agent up front that writes will fail.
+| Option | Default | Meaning |
+|---|---|---|
+| `magmaPath` | auto-detect | Path to the `magma` wrapper (else `MAGMA_PATH`, then PATH, then `/opt/magma/magma`) |
+| `magmaDiagnostics` | `true` | Run the real-Magma syntax/binding pass on open/save |
+| `magmaTimeout` | `10.0` | Seconds allowed for that pass |
+| `lints` | `true` | Pitfall + unused-variable lints |
+| `unknownIntrinsics` | `true` | Static unknown-intrinsic check (needs the DB) |
+| `workspaceSymbols` | `true` | Scan the workspace (and its `*.spec` files) for project symbols |
+| `workspaceMaxFiles` | `2000` | Workspace scan cap; larger projects skip the scan |
+| `handbook` | `true` | Enrich hover with the HTML handbook's prose |
+| `handbookDir` | auto-detect | Handbook location (default `<install>/doc/html`) |
+| `dbPath` | newest cached | Signature DB artifact to load |
+
+Environment variables: `MAGMA_PATH`, `MAGMA_PACKAGE_ROOT`, `MAGMA_LSP_DB`,
+`MAGMA_LSP_NO_SANDBOX`, `MAGMA_LSP_SANDBOX_WRITABLE`.
 
 ## Develop
 
 ```bash
-uv run pytest              # tests (a few are marked `magma` and skip without a Magma install)
+uv run pytest              # tests marked `magma` skip without a Magma install
 uv run ruff check src tests
-uv run ruff format src tests
 ```
 
-Layout: `src/magma_lsp/{db,magma,analysis}` is the framework-agnostic core; `frontend.py` is the
-shared agent-facing logic; `server.py` (LSP), `mcp_server.py` (MCP), and `cli.py` (shell) are the
-three thin adapters over it.
+Layout: `src/magma_lsp/{db,magma,analysis}` is the framework-agnostic core; `frontend.py`
+the shared agent-facing logic; `server.py` (LSP), `mcp_server.py` (MCP), and `cli.py`
+(shell) are thin adapters over it. Validation harnesses that check the DB and diagnostics
+against all of Magma's own packages live in `validation/`.
 
 ## Status
 
-Phase 0 (end-to-end plugin/server channel) and the core of Phase 1 (signature DB + read-only
-intelligence) are in place, plus a first slice of Phase 2 (Magma-backed diagnostics). See
-`design.md §7` for the staged plan.
+v0.1.x: signature DB, editor intelligence, Magma-backed diagnostics, sandboxed execution,
+MCP tools. See `design.md §7` for the staged plan.
