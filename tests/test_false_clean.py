@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 import stat
 import time
 
@@ -23,6 +24,11 @@ from magma_lsp.magma.runner import (
     run_source,
 )
 from magma_lsp.magma.validate import _launch_failed, execution_check, syntax_check
+
+# Same pattern as the other test modules: the bare `magma` marker only *labels* a test; the
+# skipif is what actually keeps it off Magma-less runners (GitHub CI has no Magma).
+_HAS_MAGMA = shutil.which("magma") is not None or os.path.exists("/opt/magma/magma")
+magma = pytest.mark.skipif(not _HAS_MAGMA, reason="requires a Magma install")
 
 
 def _stub(tmp_path, body: str, name: str = "fakemagma") -> str:
@@ -96,6 +102,7 @@ def test_run_missing_magma_is_explicit(monkeypatch):
     assert "Magma not found" in out.output
 
 
+@magma
 @pytest.mark.magma
 def test_real_run_output_has_no_sentinel():
     out = frontend.run('print "hello";\n')
@@ -103,6 +110,7 @@ def test_real_run_output_has_no_sentinel():
     assert "MLSP-" not in out.output
 
 
+@magma
 @pytest.mark.magma
 def test_real_syntax_check_not_launch_failed():
     res = syntax_check("x := 1;\n")
