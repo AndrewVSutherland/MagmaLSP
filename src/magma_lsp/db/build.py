@@ -43,6 +43,8 @@ def detect_version(magma_path: str | None = None, package_root: str | None = Non
             magma_path=magma_path,
             timeout=30.0,
         )
+        if res.timed_out or res.returncode != 0:
+            return "unknown"
         for line in res.stdout.strip().splitlines():
             line = line.strip()
             if line and line[0].isdigit():
@@ -172,6 +174,7 @@ def build_db(
 
     have_magma = find_magma(magma_path) is not None
     kernel_sigs: list[Signature] = []
+    kernel_error: str | None = None
     if include_kernel:
         if not have_magma:
             print(
@@ -183,19 +186,35 @@ def build_db(
             try:
                 kernel_sigs = enumerate_signatures(magma_path=magma_path, timeout=enum_timeout)
             except (RuntimeError, FileNotFoundError) as exc:
+                # enumerate_signatures REFUSES partial (timed-out/nonzero-exit) output — a
+                # truncated kernel set saved as complete would silently mis-flag real
+                # intrinsics as unknown. Degrade to a package-only DB and record why.
                 print(
                     f"warning: ListSignatures enumeration failed ({exc}); "
                     "building package-only DB. This is usually a Magma licensing/auth issue.",
                     file=sys.stderr,
                 )
+                kernel_error = str(exc)
 
     db = merge(package_sigs, kernel_sigs, version)
+    if kernel_error is not None:
+        db.stats["kernel_enumeration_failed"] = kernel_error
 
     # ListSignatures(Cat) omits variadic intrinsics (Sprintf, Explode, ...). Recover the ones
     # actually used in package code by probing missing-from-DB call-targets with `name;`.
     if probe_missing and have_magma and kernel_sigs:
         candidates = sorted(harvest_call_targets(package_root) - set(db.intrinsics))
-        recovered = probe_names(candidates, magma_path=magma_path, timeout=enum_timeout)
+        try:
+            recovered = probe_names(candidates, magma_path=magma_path, timeout=enum_timeout)
+        except RuntimeError as exc:
+            print(
+                f"warning: variadic-intrinsic probe incomplete ({exc}); the DB may lack "
+                "variadic kernel intrinsics (Sprintf, Explode, ...). Raise --enum-timeout "
+                "and rebuild.",
+                file=sys.stderr,
+            )
+            recovered = {}
+            db.stats["probe_incomplete"] = str(exc)
         rec_sigs = 0
         for name, sigs in recovered.items():
             if name not in db.intrinsics:
@@ -213,7 +232,16 @@ def build_db(
     # coverage from ~65% to ~96% for a couple of minutes of build time.
     if harvest_docs and have_magma and kernel_sigs:
         undocumented = sorted(n for n, i in db.intrinsics.items() if not i.has_doc)
-        harvested = probe_names(undocumented, magma_path=magma_path, timeout=enum_timeout)
+        try:
+            harvested = probe_names(undocumented, magma_path=magma_path, timeout=enum_timeout)
+        except RuntimeError as exc:
+            print(
+                f"warning: kernel doc harvest incomplete ({exc}); some kernel intrinsics "
+                "will lack doc strings. Raise --enum-timeout and rebuild.",
+                file=sys.stderr,
+            )
+            harvested = {}
+            db.stats["doc_harvest_incomplete"] = str(exc)
         filled_docs = filled_opts = 0
         for name, psigs in harvested.items():
             intr = db.intrinsics.get(name)

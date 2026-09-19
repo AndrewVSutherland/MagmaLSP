@@ -19,13 +19,17 @@ namespace must stay shared, because Magma's license check reads the host MAC add
 
 from __future__ import annotations
 
+import collections
 import contextlib
 import math
 import os
+import selectors
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
+import time
 import uuid
 from dataclasses import dataclass
 
@@ -45,6 +49,24 @@ class MagmaResult:
     # to *our* file, so program output that merely looks like an error block is not parsed
     # as a diagnostic. (The file itself is deleted before this returns.)
     source_path: str | None = None
+    # Bytes of process output discarded by the bounded capture (0 = nothing dropped).
+    bytes_dropped: int = 0
+
+
+def ready_sentinel() -> tuple[str, str]:
+    """A ``(preamble_line, expected_output)`` pair proving a *working Magma* ran the file.
+
+    Magma executes a batch file statement by statement (verified on 2.29-9: statements before
+    a later syntax OR runtime error still run), so a functioning Magma always prints the
+    sentinel before user code gets a chance to fail. Callers embed ``preamble_line`` at the
+    top of the program and require ``expected_output`` in the captured output; its absence
+    means whatever ran was not a working Magma (wrong binary, missing license, instant crash)
+    and the check must not read as clean. The output is *computed* by printf (``%o`` -> 1337),
+    so a binary that merely echoes its input (``cat``) reveals only the format string, and the
+    per-call random tag keeps user source from faking it.
+    """
+    tag = uuid.uuid4().hex[:12]
+    return f'printf "MLSP-%o-{tag}\\n", 1337;\n', f"MLSP-1337-{tag}"
 
 
 def find_magma(explicit: str | None = None) -> str | None:
@@ -368,6 +390,105 @@ def _sandbox_argv(source_path: str, cwd: str | None, magma: str | None = None) -
     return argv
 
 
+# Bounded output capture: a program printing in a loop until the wall clock kills it can emit
+# hundreds of MB; `subprocess.run(stdout=PIPE)` would hold ALL of it (then decode it) in this
+# process before any caller-level truncation, so the LSP/MCP process itself could be OOMed by
+# checked code. Instead the pipe is drained incrementally into a head buffer + a bounded tail
+# deque; everything between is counted and dropped. The tail is what matters most: Magma's
+# error blocks and final results appear at the end.
+OUTPUT_HEAD_CAP = 4 * 1024 * 1024
+OUTPUT_TAIL_CAP = 2 * 1024 * 1024
+_READ_CHUNK = 65536
+
+
+def _kill_process_tree(proc: subprocess.Popen) -> None:
+    """SIGKILL the child's process group (it is a session leader via start_new_session), so
+    descendants it spawned die too — not just the direct child."""
+    try:
+        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+    except (ProcessLookupError, PermissionError, OSError):
+        with contextlib.suppress(OSError):
+            proc.kill()
+
+
+def _run_capped(argv: list[str], *, wall: float, cwd: str | None) -> tuple[bytes, int, bool, int]:
+    """Run ``argv`` draining combined stdout+stderr into a bounded head+tail buffer.
+
+    Returns ``(output, returncode, killed_by_us, bytes_dropped)``. When ``wall`` expires the
+    whole process GROUP is SIGKILLed and the pipe drained to EOF: with GNU ``timeout`` in
+    ``argv`` this is only the backstop, but in the no-``timeout``-binary fallback it is the
+    enforcement — and killing the group (not just the child) is what reaps descendants that
+    would otherwise survive a bare ``proc.kill()``.
+    """
+    proc = subprocess.Popen(
+        argv,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        start_new_session=True,
+        cwd=cwd,
+    )
+    assert proc.stdout is not None
+    fd = proc.stdout.fileno()  # raw reads only: never mix with the buffered reader
+    head = bytearray()
+    tail: collections.deque[bytes] = collections.deque()
+    tail_size = 0
+    dropped = 0
+    killed = False
+    deadline = time.monotonic() + wall
+    sel = selectors.DefaultSelector()
+    sel.register(fd, selectors.EVENT_READ)
+    try:
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                if killed:
+                    break  # already killed and the write end still isn't closed: stop waiting
+                killed = True
+                _kill_process_tree(proc)
+                deadline = time.monotonic() + 5.0  # bounded grace to drain the pipe to EOF
+                continue
+            if not sel.select(timeout=min(remaining, 1.0)):
+                continue  # re-check the deadline
+            try:
+                chunk = os.read(fd, _READ_CHUNK)
+            except OSError:
+                break
+            if not chunk:
+                break  # EOF: every write end is closed
+            if len(head) < OUTPUT_HEAD_CAP:
+                take = min(len(chunk), OUTPUT_HEAD_CAP - len(head))
+                head += chunk[:take]
+                chunk = chunk[take:]
+            if chunk:
+                tail.append(chunk)
+                tail_size += len(chunk)
+                while tail_size > OUTPUT_TAIL_CAP and tail:
+                    old = tail.popleft()
+                    tail_size -= len(old)
+                    dropped += len(old)
+    finally:
+        sel.close()
+        with contextlib.suppress(OSError):
+            proc.stdout.close()
+    try:
+        rc = proc.wait(timeout=5.0)
+    except subprocess.TimeoutExpired:
+        _kill_process_tree(proc)
+        with contextlib.suppress(subprocess.TimeoutExpired):
+            proc.wait(timeout=5.0)
+        rc = proc.returncode if proc.returncode is not None else -9
+    if dropped:
+        marker = (
+            f"\n[... magma-lsp: {dropped} bytes of output dropped "
+            f"(exceeded the {OUTPUT_HEAD_CAP + OUTPUT_TAIL_CAP} byte capture bound) ...]\n"
+        ).encode()
+        out = bytes(head) + marker + b"".join(tail)
+    else:
+        out = bytes(head) + b"".join(tail)
+    return out, rc, killed, dropped
+
+
 def sane_timeout(timeout: float, default: float = 10.0) -> float:
     """Coerce a caller-supplied timeout to a positive finite wall clock.
 
@@ -418,39 +539,25 @@ def run_source(
             fh.write("\n")
     try:
         wrap = _sandbox_argv(path, cwd, magma) if sandbox else []
-        argv = ["timeout", str(timeout), *wrap, magma, "-b", "-n", path]
-        try:
-            proc = subprocess.run(
-                argv,
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                timeout=timeout + 5.0,
-                start_new_session=True,
-                cwd=cwd,
-            )
-        except FileNotFoundError:
-            # No `timeout` binary; fall back to subprocess-level timeout only.
-            proc = subprocess.run(
-                [*wrap, magma, "-b", "-n", path],
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                timeout=timeout,
-                start_new_session=True,
-                cwd=cwd,
-            )
-        out = proc.stdout.decode("utf-8", "replace") if proc.stdout else ""
-        # `timeout` exits 124 when it had to kill the child.
+        if shutil.which("timeout") is not None:
+            # GNU `timeout` is the primary wall clock (exits 124 after killing the child);
+            # our own group-kill at timeout+5 is the backstop.
+            argv = ["timeout", str(timeout), *wrap, magma, "-b", "-n", path]
+            out_b, rc, killed, dropped = _run_capped(argv, wall=timeout + 5.0, cwd=cwd)
+        else:
+            # No `timeout` binary: _run_capped enforces the wall clock itself, SIGKILLing the
+            # process GROUP so descendants of the Magma process don't survive the timeout.
+            argv = [*wrap, magma, "-b", "-n", path]
+            out_b, rc, killed, dropped = _run_capped(argv, wall=timeout, cwd=cwd)
+        if killed:
+            rc = 124
         return MagmaResult(
-            stdout=out,
-            returncode=proc.returncode,
-            timed_out=proc.returncode == 124,
+            stdout=out_b.decode("utf-8", "replace"),
+            returncode=rc,
+            timed_out=rc == 124,
             source_path=path,
+            bytes_dropped=dropped,
         )
-    except subprocess.TimeoutExpired as exc:
-        out = exc.stdout.decode("utf-8", "replace") if exc.stdout else ""
-        return MagmaResult(stdout=out, returncode=124, timed_out=True, source_path=path)
     finally:
         with contextlib.suppress(OSError):
             os.unlink(path)

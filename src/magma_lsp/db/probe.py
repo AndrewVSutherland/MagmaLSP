@@ -171,6 +171,11 @@ def probe_names(
 
     def probe_chunk(chunk: list[str]) -> dict[str, list[Signature]]:
         res = run_source(build_probe_script(chunk), magma_path=magma_path, timeout=timeout)
+        if res.timed_out or res.returncode != 0:
+            # A cut-off chunk means every name after the cut was silently never probed;
+            # partial results must not be folded into the DB as if the probe completed.
+            why = "timed out" if res.timed_out else f"exited {res.returncode}"
+            raise RuntimeError(f"`name;` probe of a {len(chunk)}-name batch {why}")
         return parse_probe_output(res.stdout)
 
     with ThreadPoolExecutor(max_workers=workers) as pool:

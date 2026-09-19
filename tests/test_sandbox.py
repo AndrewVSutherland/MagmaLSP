@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import os
 import shutil
-from types import SimpleNamespace
 
 import pytest
 
@@ -418,11 +417,11 @@ def test_run_source_sandbox_flag_controls_bwrap_prefix(monkeypatch):
     _fresh_policy(monkeypatch)
     seen: dict = {}
 
-    def fake_subprocess_run(argv, **kw):
+    def fake_run_capped(argv, **kw):
         seen["argv"] = list(argv)
-        return SimpleNamespace(returncode=0, stdout=b"")
+        return b"", 0, False, 0
 
-    monkeypatch.setattr(runner.subprocess, "run", fake_subprocess_run)
+    monkeypatch.setattr(runner, "_run_capped", fake_run_capped)
     monkeypatch.setattr(runner, "find_magma", lambda p=None: "/fake/magma")
 
     runner.run_source("print 1;", sandbox=False)

@@ -28,7 +28,7 @@ from .db.index import SignatureIndex
 from .db.store import best_cached_db
 from .handbook import HandbookIndex
 from .magma.diagnostics import MagmaDiagnostic
-from .magma.runner import find_magma, run_source, sane_timeout
+from .magma.runner import find_magma, ready_sentinel, run_source, sane_timeout
 from .magma.validate import execution_check, syntax_check
 
 # Memory ceiling for the execution path; timeout + memory limit are always enforced
@@ -328,8 +328,9 @@ def check(
         elif syn.launch_failed:
             inconclusive = True
             notes.append(
-                "INCONCLUSIVE: Magma exited without producing diagnostics — the check did "
-                "not complete (is the magma binary/wrapper working?)"
+                "INCONCLUSIVE: the Magma process did not complete the check — nothing was "
+                "validated. The configured executable may not be a working Magma (check "
+                "magmaPath / MAGMA_PATH / `magma` on PATH, and its license)."
             )
         else:
             magma_diags = syn.diagnostics
@@ -383,7 +384,7 @@ def check(
     if rendered:
         return CheckOutcome(False, "FAIL: issues found:\n" + "\n".join(rendered) + tail)
     if inconclusive:
-        return CheckOutcome(False, "INCONCLUSIVE: Magma check timed out." + tail)
+        return CheckOutcome(False, "INCONCLUSIVE: the Magma pass did not complete." + tail)
     if not magma_ran:
         return CheckOutcome(True, "OK: static checks passed (Magma pass skipped)." + tail)
     return CheckOutcome(True, "OK: no static or Magma errors detected." + tail)
@@ -459,12 +460,44 @@ def run(
     against the process cwd); that directory stays readable inside the sandbox.
     """
     timeout = sane_timeout(timeout, default=30.0)
-    preamble = _RUN_PREAMBLE + f"SetMemoryLimit({memory_bytes});\nSetQuitOnError(true);\n"
+    sent_line, expect = ready_sentinel()
+    preamble = (
+        _RUN_PREAMBLE + f"SetMemoryLimit({memory_bytes});\nSetQuitOnError(true);\n{sent_line}"
+    )
     offset = preamble.count("\n")
     cwd = os.path.dirname(os.path.abspath(filename)) if filename else None
-    res = run_source(
-        source, timeout=timeout, preamble=preamble, magma_path=magma_path, cwd=cwd, sandbox=True
-    )
-    out = _remap_run_output(res.stdout, offset)
+    try:
+        res = run_source(
+            source, timeout=timeout, preamble=preamble, magma_path=magma_path, cwd=cwd, sandbox=True
+        )
+    except FileNotFoundError:
+        return RunOutcome(
+            "error: Magma not found — nothing was executed "
+            "(set MAGMA_PATH / magmaPath, or put `magma` on PATH)",
+            127,
+            False,
+        )
+    if expect in res.stdout:
+        # drop the sentinel's own line (normally the first line of output)
+        out = res.stdout.replace(expect + "\n", "", 1).replace(expect, "", 1)
+    elif not res.timed_out:
+        # A working Magma prints the sentinel before user code runs (statement-by-statement
+        # execution); its absence means nothing was executed — never present the process
+        # output as a program result.
+        head = " ".join(res.stdout.split())[:400]
+        return RunOutcome(
+            "error: Magma did not start (not a working Magma executable, or its license "
+            f"check failed?) — nothing was executed. Process output: {head if head else '(none)'}",
+            res.returncode if res.returncode not in (0, None) else 1,
+            False,
+        )
+    else:
+        out = res.stdout
+    out = _remap_run_output(out, offset)
     out, truncated = _truncate_output(out, max_output)
+    if res.bytes_dropped:
+        out += (
+            f"\n(note: the program's output exceeded the capture bound; {res.bytes_dropped:,} "
+            "bytes from the middle were dropped — head and tail are preserved)"
+        )
     return RunOutcome(out, res.returncode, res.timed_out, truncated)

@@ -35,17 +35,7 @@ from dataclasses import dataclass
 
 from ..parsing import new_parser
 from .diagnostics import MagmaDiagnostic, parse_diagnostics
-from .runner import SERVER_PREAMBLE, run_source
-
-# Lines prepended before the user's first line in the wrapped pass.
-_SYNTAX_PREAMBLE = (
-    "SetColumns(0);\n"
-    "SetAutoColumns(false);\n"
-    "SetEchoInput(false);\n"
-    "SetIgnorePrompt(true);\n"
-    "__magma_lsp_chk := function()\n"
-)
-_SYNTAX_OFFSET = _SYNTAX_PREAMBLE.count("\n")  # user line 1 == magma line OFFSET+1
+from .runner import SERVER_PREAMBLE, ready_sentinel, run_source
 
 _MAX_TS_DIAGS = 20
 
@@ -54,13 +44,20 @@ _MAX_TS_DIAGS = 20
 class CheckResult:
     diagnostics: list[MagmaDiagnostic]
     timed_out: bool
-    # the Magma process exited nonzero WITHOUT any parseable diagnostic (wrong binary,
-    # failing wrapper, ...): the check did not complete and must not read as clean
+    # the Magma process produced neither a parseable diagnostic nor the ready sentinel (or
+    # exited nonzero without a diagnostic): whatever ran was not a working Magma, or it died
+    # before validating anything — the check did not complete and must not read as clean
     launch_failed: bool = False
 
 
-def _launch_failed(diags: list[MagmaDiagnostic], res) -> bool:
-    return not diags and not res.timed_out and res.returncode not in (0, None)
+def _launch_failed(diags: list[MagmaDiagnostic], res, ready: bool) -> bool:
+    """No diagnostics and no timeout, but either the ready sentinel never appeared (the
+    executable was not a functioning Magma: ``/usr/bin/true`` exits 0 silently, a licensing
+    failure prints only free text) or Magma exited nonzero without a parseable error block
+    (crashed mid-check). Either way nothing was validated."""
+    if diags or res.timed_out:
+        return False
+    return not ready or res.returncode not in (0, None)
 
 
 # ----------------------------------------------------------------------------------------------
@@ -180,9 +177,16 @@ def _wrapped_check(
     load_exports: frozenset[str] | None = None,
 ) -> CheckResult:
     src, has_loads = _blank_out_loads(source, root)
-    wrapped = f"{_SYNTAX_PREAMBLE}{src}\nreturn 0; end function;\n"
+    # The sentinel line sits at top level BEFORE the wrapper: Magma executes batch files
+    # statement by statement, so a working Magma prints it even when the wrapped user code
+    # then fails to parse — its absence means no Magma ran (see runner.ready_sentinel).
+    sent_line, expect = ready_sentinel()
+    preamble = f"{SERVER_PREAMBLE}{sent_line}__magma_lsp_chk := function()\n"
+    offset = preamble.count("\n")  # user line 1 == magma line offset+1
+    wrapped = f"{preamble}{src}\nreturn 0; end function;\n"
     res = run_source(wrapped, magma_path=magma_path, timeout=timeout, preamble="")
-    diags = _shift(parse_diagnostics(res.stdout, expect_file=res.source_path), _SYNTAX_OFFSET)
+    ready = expect in res.stdout
+    diags = _shift(parse_diagnostics(res.stdout, expect_file=res.source_path), offset)
     if has_loads:
         if load_exports is None:
             # `load` can define anything; undefined-name reports would be false positives.
@@ -198,7 +202,9 @@ def _wrapped_check(
             diags = [d for d in diags if _keep(d)]
     fitted = _fit_to_source(diags, source)
     return CheckResult(
-        diagnostics=fitted, timed_out=res.timed_out, launch_failed=_launch_failed(fitted, res)
+        diagnostics=fitted,
+        timed_out=res.timed_out,
+        launch_failed=_launch_failed(fitted, res, ready),
     )
 
 
@@ -210,17 +216,29 @@ def _attach_check(source: str, *, magma_path: str | None, timeout: float) -> Che
         if not source.endswith("\n"):
             fh.write("\n")
     try:
-        driver = f'Attach("{pkg_path}");\n'
+        sent_line, expect = ready_sentinel()
+        driver = f'{sent_line}Attach("{pkg_path}");\n'
         res = run_source(driver, magma_path=magma_path, timeout=timeout, preamble=SERVER_PREAMBLE)
+        ready = expect in res.stdout
         # Positions are already in the package file's own coordinates: no shift. The driver's
         # own "Cannot attach" follow-up is filtered out by expect_file.
         diags = parse_diagnostics(res.stdout, expect_file=pkg_path)
         diags = [d for d in diags if "Cannot attach intrinsics" not in d.message]
+        if not diags and ready and "Cannot attach intrinsics" in res.stdout:
+            # Attach failed for a non-parse reason (unreadable file, ...): without this the
+            # run would read as a clean check of a file Magma never actually parsed.
+            diags = [
+                MagmaDiagnostic(
+                    1, 1, "error",
+                    "Magma could not Attach the file (no parse diagnostics were produced)",
+                    positionless=True,
+                )
+            ]
         fitted = _fit_to_source(diags, source)
         return CheckResult(
             diagnostics=fitted,
             timed_out=res.timed_out,
-            launch_failed=_launch_failed(fitted, res),
+            launch_failed=_launch_failed(fitted, res, ready),
         )
     finally:
         with contextlib.suppress(OSError):
@@ -269,6 +287,7 @@ def execution_check(
     Error blocks Magma attributes to those files are REAL (the load executed them) and are
     surfaced as positionless diagnostics naming the file; blocks naming any other file are
     still dropped (program output must not spoof diagnostics)."""
+    sent_line, expect = ready_sentinel()
     preamble = (
         "SetColumns(0);\n"
         "SetAutoColumns(false);\n"
@@ -276,6 +295,7 @@ def execution_check(
         "SetIgnorePrompt(true);\n"
         f"SetMemoryLimit({memory_bytes});\n"
         "SetQuitOnError(true);\n"
+        f"{sent_line}"
     )
     offset = preamble.count("\n")
     res = run_source(
@@ -286,6 +306,7 @@ def execution_check(
         cwd=cwd,
         sandbox=True,  # this pass EXECUTES user code — the parse-only strategies do not
     )
+    ready = expect in res.stdout
     diags: list[MagmaDiagnostic] = []
     for d in parse_diagnostics(res.stdout):
         if d.file is None:
@@ -314,7 +335,22 @@ def execution_check(
             )
         # else: a block naming a file we neither wrote nor load — spoofable, dropped
     diags = _fit_to_source(_shift(diags, offset), source)
-    if not diags and not res.timed_out and res.returncode not in (0, None):
+    if not ready and not res.timed_out:
+        # The ready sentinel never appeared: whatever ran was not a functioning Magma (wrong
+        # binary, licensing failure, instant crash) — nothing was executed or validated, and
+        # anything parsed above is noise. Never read as clean; show what the process said.
+        head = " ".join(res.stdout.split())[:200]
+        diags = [
+            MagmaDiagnostic(
+                1,
+                1,
+                "error",
+                "Magma did not start (not a working Magma executable, or its license check "
+                f"failed?) — process output: {head if head else '(none)'}",
+                positionless=True,
+            )
+        ]
+    elif not diags and not res.timed_out and res.returncode not in (0, None):
         # execution failed but nothing parseable survived the filter — never read as clean
         diags.append(
             MagmaDiagnostic(
